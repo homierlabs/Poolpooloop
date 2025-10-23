@@ -1,6 +1,7 @@
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/auth/spotify"
+const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/api/auth/callback"
+
 
 console.log("[v0] Spotify config:", {
   hasClientId: !!CLIENT_ID,
