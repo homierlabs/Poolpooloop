@@ -1,0 +1,119 @@
+const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!
+const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
+const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/auth/spotify"
+
+console.log("[v0] Spotify config:", {
+  hasClientId: !!CLIENT_ID,
+  hasClientSecret: !!CLIENT_SECRET,
+  redirectUri: REDIRECT_URI,
+})
+
+export const spotifyApi = {
+  getAuthUrl: () => {
+    const scopes = [
+      "user-read-private",
+      "user-read-email",
+      "user-read-playback-state",
+      "user-modify-playback-state",
+      "user-read-currently-playing",
+      "playlist-read-private",
+      "playlist-read-collaborative",
+      "user-top-read",
+    ]
+
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      response_type: "code",
+      redirect_uri: REDIRECT_URI,
+      scope: scopes.join(" "),
+    })
+
+    return `https://accounts.spotify.com/authorize?${params.toString()}`
+  },
+
+  getAccessToken: async (code: string) => {
+    console.log("[v0] Requesting access token from Spotify")
+
+    const response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: REDIRECT_URI,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("[v0] Token request failed:", response.status, data)
+    }
+
+    return data
+  },
+
+  refreshAccessToken: async (refreshToken: string) => {
+    const response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    })
+
+    return response.json()
+  },
+
+  getUserProfile: async (accessToken: string) => {
+    const response = await fetch("https://api.spotify.com/v1/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  getRecommendations: async (accessToken: string, seedTracks: string[]) => {
+    const params = new URLSearchParams({
+      seed_tracks: seedTracks.slice(0, 5).join(","),
+      limit: "20",
+    })
+
+    const response = await fetch(`https://api.spotify.com/v1/recommendations?${params}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  getTrackFeatures: async (accessToken: string, trackIds: string[]) => {
+    const response = await fetch(`https://api.spotify.com/v1/audio-features?ids=${trackIds.join(",")}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  getUserTopTracks: async (accessToken: string, limit = 50) => {
+    const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=medium_term`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+}
