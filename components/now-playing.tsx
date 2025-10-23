@@ -1,59 +1,135 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import type { Track } from "@/lib/types"
 import Image from "next/image"
+import { useEffect, useState } from "react"
 
 interface NowPlayingProps {
-  track: Track | null
-  progress: number
-  duration: number
+  track: Track
+  timeRemaining: number
+  nextTrack?: Track | null
+  songProgress: number
 }
 
-export function NowPlaying({ track, progress, duration }: NowPlayingProps) {
-  if (!track) {
-    return (
-      <Card className="p-8">
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">No track playing</p>
-        </div>
-      </Card>
-    )
-  }
+export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: NowPlayingProps) {
+  const [bars, setBars] = useState<number[]>([])
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null)
 
-  const progressPercent = (progress / duration) * 100
+  useEffect(() => {
+    const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
+    setBars(newBars)
+  }, [])
+
+  useEffect(() => {
+    if (track.previewUrl) {
+      const newAudio = new Audio(track.previewUrl)
+      newAudio.volume = 0.5
+      newAudio.loop = true
+      newAudio.play().catch((error) => {
+        console.log("[v0] Audio playback failed:", error)
+      })
+      setAudio(newAudio)
+
+      return () => {
+        newAudio.pause()
+        newAudio.src = ""
+      }
+    }
+  }, [track.id, track.previewUrl])
+
+  const progressPercentage = (songProgress / 180) * 100
 
   return (
-    <Card className="p-8">
-      <div className="flex flex-col md:flex-row gap-6 items-center">
-        <div className="relative w-48 h-48 flex-shrink-0">
-          <Image
-            src={track.albumArt || "/placeholder.svg"}
-            alt={track.album}
-            fill
-            className="object-cover rounded-lg"
-          />
-        </div>
-        <div className="flex-1 w-full">
-          <h2 className="text-3xl font-bold mb-2">{track.name}</h2>
-          <p className="text-xl text-muted-foreground mb-4">{track.artist}</p>
-          <p className="text-sm text-muted-foreground mb-6">{track.album}</p>
-          <div className="space-y-2">
-            <Progress value={progressPercent} className="h-2" />
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>{formatTime(progress)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
+    <div className="mb-6 sm:mb-8 animate-slide-up">
+      <div className="bg-gradient-to-b from-card to-secondary/50 rounded-lg sm:rounded-xl p-4 sm:p-6 relative overflow-hidden">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+          <div className="bg-primary text-primary-foreground px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
+            <div className="text-lg sm:text-2xl font-bold">{timeRemaining}s</div>
           </div>
         </div>
-      </div>
-    </Card>
-  )
-}
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, "0")}`
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-6 mb-4 sm:mb-6">
+          <div className="flex flex-col w-full sm:w-auto">
+            <div className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
+              Now Playing
+            </div>
+            <div className="flex items-end gap-3 sm:gap-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg">
+                <Image
+                  src={
+                    track.albumArt ||
+                    `/placeholder.svg?height=80&width=80&query=${encodeURIComponent(track.name + " album cover")}`
+                  }
+                  alt={`${track.name} album`}
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0">
+                <div className="text-base sm:text-lg font-bold truncate">{track.name || "Name of Song"}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground truncate">{track.artist || "Artist"}</div>
+                <div className="text-xs text-muted-foreground/70 truncate">{track.album || "Album"}</div>
+                <div className="text-xs text-muted-foreground/70">{track.year || "Year"}</div>
+              </div>
+            </div>
+          </div>
+
+          {nextTrack && (
+            <div className="flex flex-col w-full sm:w-auto">
+              <div className="text-xs sm:text-sm font-bold text-primary uppercase tracking-wider mb-2 sm:text-right">
+                Up Next
+              </div>
+              <div className="flex items-end gap-3 sm:gap-4">
+                <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0 sm:text-right sm:order-1">
+                  <div className="text-base sm:text-lg font-bold truncate">{nextTrack.name || "Name of Song"}</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                    {nextTrack.artist || "Artist"}
+                  </div>
+                  <div className="text-xs text-muted-foreground/70 truncate">{nextTrack.album || "Album"}</div>
+                  <div className="text-xs text-muted-foreground/70">{nextTrack.year || "Year"}</div>
+                </div>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg sm:order-2">
+                  <Image
+                    src={
+                      nextTrack.albumArt ||
+                      `/placeholder.svg?height=80&width=80&query=${encodeURIComponent(nextTrack.name + " album cover")}`
+                    }
+                    alt={`${nextTrack.name} album`}
+                    width={80}
+                    height={80}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="relative flex items-center gap-[1px] sm:gap-[2px] overflow-hidden rounded bg-secondary/80 px-1 sm:px-2 h-10 sm:h-14">
+          {bars.map((height, index) => {
+            const barProgress = (index / bars.length) * 100
+            const isPassed = barProgress <= progressPercentage
+
+            return (
+              <div
+                key={index}
+                className="flex-1 transition-all duration-300 rounded-sm"
+                style={{
+                  height: `${height}%`,
+                  backgroundColor: isPassed ? "#1db954" : "#535353",
+                  opacity: isPassed ? 1 : 0.4,
+                }}
+              />
+            )
+          })}
+
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 transition-all duration-1000 ease-linear"
+            style={{ left: `${progressPercentage}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
 }

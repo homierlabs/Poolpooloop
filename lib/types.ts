@@ -11,6 +11,7 @@ export interface Track {
   energy: number
   danceability: number
   valence: number
+  year?: string
 }
 
 export interface VoteData {

@@ -11,13 +11,27 @@ import { LogOut } from "lucide-react"
 
 export default function DJInterface() {
   const router = useRouter()
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
+  const [currentTrack, setCurrentTrack] = useState<Track>({
+    id: "medasin-bounce",
+    name: "Bounce",
+    artist: "Medasin",
+    album: "Irene",
+    albumArt: "/placeholder.svg?height=300&width=300",
+    duration: 180,
+    previewUrl: "",
+    uri: "spotify:track:medasin-bounce",
+    popularity: 75,
+    energy: 0.8,
+    danceability: 0.85,
+    valence: 0.7,
+    year: "2018",
+  })
   const [candidates, setCandidates] = useState<Track[]>([])
   const [nextTrack, setNextTrack] = useState<Track | null>(null)
   const [votedIndex, setVotedIndex] = useState<number | null>(null)
   const [songProgress, setSongProgress] = useState(0)
   const [timeRemaining, setTimeRemaining] = useState(15)
-  const [votes, setVotes] = useState<number[]>([0, 0, 0, 0, 0, 0])
+  const [votes, setVotes] = useState<number[]>([0, 0, 0, 0])
   const [votingActive, setVotingActive] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -86,16 +100,11 @@ export default function DJInterface() {
       const response = await fetch("/api/tracks")
       const data = await response.json()
 
-      if (!currentTrack && data.tracks.length > 0) {
-        setCurrentTrack(data.tracks[0])
-        setSongProgress(0)
-      }
-
-      const nextCandidates = selectNextCandidates(currentTrack || data.tracks[0], data.tracks)
+      const nextCandidates = selectNextCandidates(currentTrack, data.tracks)
       setCandidates(nextCandidates)
       setVotedIndex(null)
       setNextTrack(null)
-      setVotes([0, 0, 0, 0, 0, 0])
+      setVotes([0, 0, 0, 0])
       setVotingActive(false)
     } catch (error) {
       console.error("[v0] Failed to fetch tracks:", error)
@@ -106,7 +115,7 @@ export default function DJInterface() {
     return tracks
       .filter((t) => t.id !== current.id)
       .sort(() => Math.random() - 0.5)
-      .slice(0, 6)
+      .slice(0, 4)
   }
 
   const handleVote = (index: number) => {
@@ -119,7 +128,6 @@ export default function DJInterface() {
       return newVotes
     })
 
-    // Submit vote to server
     fetch("/api/vote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -164,18 +172,16 @@ export default function DJInterface() {
           </Button>
         </div>
 
-        <NowPlaying track={currentTrack} progress={songProgress} duration={180} />
+        <NowPlaying
+          track={currentTrack}
+          timeRemaining={timeRemaining}
+          nextTrack={nextTrack}
+          songProgress={songProgress}
+        />
 
         {nextTrack && <NextUpBanner track={nextTrack} />}
 
-        <VotingGrid
-          candidates={candidates}
-          votes={votes}
-          votedIndex={votedIndex}
-          onVote={handleVote}
-          timeRemaining={timeRemaining}
-          votingActive={votingActive}
-        />
+        <VotingGrid candidates={candidates} votes={votes} votedIndex={votedIndex} onVote={handleVote} />
       </div>
     </div>
   )
