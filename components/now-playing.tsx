@@ -22,22 +22,27 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
 
   useEffect(() => {
     if (track.previewUrl) {
+      console.log("[v0] Loading audio for track:", track.name, track.previewUrl)
       const newAudio = new Audio(track.previewUrl)
       newAudio.volume = 0.5
       newAudio.loop = true
+
       newAudio.play().catch((error) => {
-        console.log("[v0] Audio playback failed:", error)
+        console.error("[v0] Audio playback failed:", error)
       })
+
       setAudio(newAudio)
 
       return () => {
         newAudio.pause()
         newAudio.src = ""
       }
+    } else {
+      console.log("[v0] No preview URL available for track:", track.name)
     }
-  }, [track.id, track.previewUrl])
+  }, [track.id, track.previewUrl, track.name])
 
-  const progressPercentage = (songProgress / 180) * 100
+  const progressPercentage = (songProgress / track.duration) * 100
 
   return (
     <div className="mb-6 sm:mb-8 animate-slide-up">
@@ -56,10 +61,7 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
             <div className="flex items-end gap-3 sm:gap-4">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg">
                 <Image
-                  src={
-                    track.albumArt ||
-                    `/placeholder.svg?height=80&width=80&query=${encodeURIComponent(track.name + " album cover")}`
-                  }
+                  src={track.albumArt || "/placeholder.svg"}
                   alt={`${track.name} album`}
                   width={80}
                   height={80}
@@ -91,10 +93,7 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
                 </div>
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg sm:order-2">
                   <Image
-                    src={
-                      nextTrack.albumArt ||
-                      `/placeholder.svg?height=80&width=80&query=${encodeURIComponent(nextTrack.name + " album cover")}`
-                    }
+                    src={nextTrack.albumArt || "/placeholder.svg"}
                     alt={`${nextTrack.name} album`}
                     width={80}
                     height={80}

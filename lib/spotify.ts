@@ -2,7 +2,6 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
 const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/api/auth/callback"
 
-
 console.log("[v0] Spotify config:", {
   hasClientId: !!CLIENT_ID,
   hasClientSecret: !!CLIENT_SECRET,
@@ -110,6 +109,70 @@ export const spotifyApi = {
 
   getUserTopTracks: async (accessToken: string, limit = 50) => {
     const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=medium_term`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  searchTrack: async (accessToken: string, query: string) => {
+    const params = new URLSearchParams({
+      q: query,
+      type: "track",
+      limit: "1",
+    })
+
+    const response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  getRecommendationsBySeed: async (
+    accessToken: string,
+    seedTrackId: string,
+    targetFeatures: {
+      energy?: number
+      danceability?: number
+      valence?: number
+      tempo?: number
+    },
+  ) => {
+    const params = new URLSearchParams({
+      seed_tracks: seedTrackId,
+      limit: "20",
+    })
+
+    // Add target audio features to get similar tracks
+    if (targetFeatures.energy !== undefined) {
+      params.append("target_energy", targetFeatures.energy.toString())
+    }
+    if (targetFeatures.danceability !== undefined) {
+      params.append("target_danceability", targetFeatures.danceability.toString())
+    }
+    if (targetFeatures.valence !== undefined) {
+      params.append("target_valence", targetFeatures.valence.toString())
+    }
+    if (targetFeatures.tempo !== undefined) {
+      params.append("target_tempo", targetFeatures.tempo.toString())
+    }
+
+    const response = await fetch(`https://api.spotify.com/v1/recommendations?${params}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    return response.json()
+  },
+
+  getSingleTrackFeatures: async (accessToken: string, trackId: string) => {
+    const response = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },

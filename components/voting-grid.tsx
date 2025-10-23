@@ -6,9 +6,14 @@ interface VotingGridProps {
   onVote: (index: number) => void
   votedIndex: number | null
   votes: number[]
+  isActive?: boolean
 }
 
-export function VotingGrid({ candidates, onVote, votedIndex, votes }: VotingGridProps) {
+export function VotingGrid({ candidates, onVote, votedIndex, votes, isActive = true }: VotingGridProps) {
+  if (!isActive || candidates.length === 0) {
+    return null
+  }
+
   return (
     <div className="animate-slide-up">
       <div className="mb-4 sm:mb-6">

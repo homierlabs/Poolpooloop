@@ -11,21 +11,7 @@ import { LogOut } from "lucide-react"
 
 export default function DJInterface() {
   const router = useRouter()
-  const [currentTrack, setCurrentTrack] = useState<Track>({
-    id: "medasin-bounce",
-    name: "Bounce",
-    artist: "Medasin",
-    album: "Irene",
-    albumArt: "/placeholder.svg?height=300&width=300",
-    duration: 180,
-    previewUrl: "",
-    uri: "spotify:track:medasin-bounce",
-    popularity: 75,
-    energy: 0.8,
-    danceability: 0.85,
-    valence: 0.7,
-    year: "2018",
-  })
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [candidates, setCandidates] = useState<Track[]>([])
   const [nextTrack, setNextTrack] = useState<Track | null>(null)
   const [votedIndex, setVotedIndex] = useState<number | null>(null)
@@ -44,14 +30,21 @@ export default function DJInterface() {
 
     const songTimer = setInterval(() => {
       setSongProgress((prev) => {
-        if (prev >= 180) {
+        if (prev >= currentTrack.duration) {
           if (nextTrack) {
             setCurrentTrack(nextTrack)
-            fetchNextRound()
+            setSongProgress(0)
+            setVotingActive(false)
+            setVotedIndex(null)
+            setVotes([0, 0, 0, 0])
+            setNextTrack(null)
+            fetchSimilarTracks(nextTrack)
           }
           return 0
         }
-        if (prev === 90) {
+        const midPoint = Math.floor(currentTrack.duration / 2)
+        if (prev === midPoint && !votingActive && candidates.length > 0) {
+          console.log("[v0] Activating voting at midpoint:", midPoint, "seconds")
           setVotingActive(true)
           setTimeRemaining(15)
         }
@@ -60,7 +53,7 @@ export default function DJInterface() {
     }, 1000)
 
     return () => clearInterval(songTimer)
-  }, [currentTrack, nextTrack])
+  }, [currentTrack, nextTrack, votingActive, candidates])
 
   useEffect(() => {
     if (!votingActive || candidates.length === 0) return
@@ -86,7 +79,7 @@ export default function DJInterface() {
         router.push("/")
         return
       }
-      await fetchNextRound()
+      await fetchInitialTrack()
     } catch (error) {
       console.error("[v0] Auth check failed:", error)
       router.push("/")
@@ -95,19 +88,50 @@ export default function DJInterface() {
     }
   }
 
-  const fetchNextRound = async () => {
+  const fetchInitialTrack = async () => {
     try {
-      const response = await fetch("/api/tracks")
+      const response = await fetch("/api/tracks/search?q=Medasin Bounce")
       const data = await response.json()
 
-      const nextCandidates = selectNextCandidates(currentTrack, data.tracks)
-      setCandidates(nextCandidates)
-      setVotedIndex(null)
-      setNextTrack(null)
-      setVotes([0, 0, 0, 0])
-      setVotingActive(false)
+      if (data.track) {
+        console.log("[v0] Loaded initial track:", data.track)
+        setCurrentTrack(data.track)
+        await fetchSimilarTracks(data.track)
+      } else {
+        console.log("[v0] Medasin - Bounce not found, using fallback")
+        const tracksResponse = await fetch("/api/tracks")
+        const tracksData = await tracksResponse.json()
+        if (tracksData.tracks && tracksData.tracks.length > 0) {
+          setCurrentTrack(tracksData.tracks[0])
+          await fetchSimilarTracks(tracksData.tracks[0])
+        }
+      }
     } catch (error) {
-      console.error("[v0] Failed to fetch tracks:", error)
+      console.error("[v0] Failed to fetch initial track:", error)
+    }
+  }
+
+  const fetchSimilarTracks = async (track: Track) => {
+    try {
+      const response = await fetch(`/api/tracks/similar?trackId=${track.id}`)
+      const data = await response.json()
+
+      if (data.tracks && data.tracks.length >= 4) {
+        const similarTracks = data.tracks
+          .filter((t: Track) => t.id !== track.id)
+          .sort(() => Math.random() - 0.5)
+          .slice(0, 4)
+
+        console.log("[v0] Loaded 4 similar tracks based on audio features (BPM, danceability, energy)")
+        setCandidates(similarTracks)
+      } else {
+        const fallbackResponse = await fetch("/api/tracks")
+        const fallbackData = await fallbackResponse.json()
+        const nextCandidates = selectNextCandidates(track, fallbackData.tracks)
+        setCandidates(nextCandidates)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch similar tracks:", error)
     }
   }
 
@@ -140,6 +164,7 @@ export default function DJInterface() {
     const winnerIndex = votes.indexOf(maxVotes)
 
     if (winnerIndex !== -1 && candidates[winnerIndex]) {
+      console.log("[v0] Winner selected:", candidates[winnerIndex].name)
       setNextTrack(candidates[winnerIndex])
     }
   }
@@ -153,7 +178,7 @@ export default function DJInterface() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || !currentTrack) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -181,7 +206,13 @@ export default function DJInterface() {
 
         {nextTrack && <NextUpBanner track={nextTrack} />}
 
-        <VotingGrid candidates={candidates} votes={votes} votedIndex={votedIndex} onVote={handleVote} />
+        <VotingGrid
+          candidates={candidates}
+          votes={votes}
+          votedIndex={votedIndex}
+          onVote={handleVote}
+          isActive={votingActive}
+        />
       </div>
     </div>
   )
