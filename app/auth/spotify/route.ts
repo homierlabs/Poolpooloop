@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       })
     }
 
-    return NextResponse.redirect(new URL("/dj", request.url))
+    return NextResponse.redirect(new URL("/select-song", request.url))
   } catch (error) {
     console.error("Spotify callback failed:", error)
     return NextResponse.redirect(new URL("/?error=auth_failed", request.url))

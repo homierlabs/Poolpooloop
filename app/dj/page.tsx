@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { NowPlaying } from "@/components/now-playing"
 import { VotingGrid } from "@/components/voting-grid"
 import { NextUpBanner } from "@/components/next-up-banner"
@@ -11,6 +11,7 @@ import { LogOut } from "lucide-react"
 
 export default function DJInterface() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [candidates, setCandidates] = useState<Track[]>([])
   const [nextTrack, setNextTrack] = useState<Track | null>(null)
@@ -90,6 +91,20 @@ export default function DJInterface() {
 
   const fetchInitialTrack = async () => {
     try {
+      const trackId = searchParams.get("trackId")
+
+      if (trackId) {
+        const response = await fetch(`/api/tracks/by-id?id=${trackId}`)
+        const data = await response.json()
+
+        if (data.track) {
+          console.log("[v0] Loaded selected track:", data.track)
+          setCurrentTrack(data.track)
+          await fetchSimilarTracks(data.track)
+          return
+        }
+      }
+
       const response = await fetch("/api/tracks/search?q=Medasin Bounce")
       const data = await response.json()
 
