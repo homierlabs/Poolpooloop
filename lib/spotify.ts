@@ -20,6 +20,7 @@ export const spotifyApi = {
       "playlist-read-collaborative",
       "user-top-read",
       "streaming", // Added streaming scope for Web Playback SDK
+      "user-read-playback-position",
     ]
 
     const params = new URLSearchParams({
