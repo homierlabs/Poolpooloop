@@ -80,6 +80,14 @@ export default function DJInterface() {
         router.push("/")
         return
       }
+
+      const trackId = searchParams.get("trackId")
+      if (!trackId) {
+        console.log("[v0] No trackId provided, redirecting to song selection")
+        router.push("/select-song")
+        return
+      }
+
       await fetchInitialTrack()
     } catch (error) {
       console.error("[v0] Auth check failed:", error)
@@ -93,36 +101,25 @@ export default function DJInterface() {
     try {
       const trackId = searchParams.get("trackId")
 
-      if (trackId) {
-        const response = await fetch(`/api/tracks/by-id?id=${trackId}`)
-        const data = await response.json()
-
-        if (data.track) {
-          console.log("[v0] Loaded selected track:", data.track)
-          setCurrentTrack(data.track)
-          await fetchSimilarTracks(data.track)
-          return
-        }
+      if (!trackId) {
+        router.push("/select-song")
+        return
       }
 
-      const response = await fetch("/api/tracks/search?q=Medasin Bounce")
+      const response = await fetch(`/api/tracks/by-id?id=${trackId}`)
       const data = await response.json()
 
       if (data.track) {
-        console.log("[v0] Loaded initial track:", data.track)
+        console.log("[v0] Loaded selected track:", data.track)
         setCurrentTrack(data.track)
         await fetchSimilarTracks(data.track)
       } else {
-        console.log("[v0] Medasin - Bounce not found, using fallback")
-        const tracksResponse = await fetch("/api/tracks")
-        const tracksData = await tracksResponse.json()
-        if (tracksData.tracks && tracksData.tracks.length > 0) {
-          setCurrentTrack(tracksData.tracks[0])
-          await fetchSimilarTracks(tracksData.tracks[0])
-        }
+        console.error("[v0] Track not found, redirecting to song selection")
+        router.push("/select-song")
       }
     } catch (error) {
       console.error("[v0] Failed to fetch initial track:", error)
+      router.push("/select-song")
     }
   }
 

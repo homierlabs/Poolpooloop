@@ -11,21 +11,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const checkAuth = async () => {
-      try {
-        const response = await fetch("/api/auth/session")
-        if (response.ok) {
-          router.push("/dj")
-        }
-      } catch (error) {
-        console.error("[v0] Auth check failed:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkAuth()
+    setIsLoading(false)
   }, [router])
 
   const handleLogin = async () => {
