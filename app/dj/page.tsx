@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { NowPlaying } from "@/components/now-playing"
 import { VotingGrid } from "@/components/voting-grid"
 import { NextUpBanner } from "@/components/next-up-banner"
+import { SpotifyPlayer } from "@/components/spotify-player"
 import { Button } from "@/components/ui/button"
 import type { Track } from "@/lib/types"
 import { LogOut } from "lucide-react"
@@ -25,36 +26,6 @@ export default function DJInterface() {
   useEffect(() => {
     checkAuthAndFetch()
   }, [])
-
-  useEffect(() => {
-    if (!currentTrack) return
-
-    const songTimer = setInterval(() => {
-      setSongProgress((prev) => {
-        if (prev >= currentTrack.duration) {
-          if (nextTrack) {
-            setCurrentTrack(nextTrack)
-            setSongProgress(0)
-            setVotingActive(false)
-            setVotedIndex(null)
-            setVotes([0, 0, 0, 0])
-            setNextTrack(null)
-            fetchSimilarTracks(nextTrack)
-          }
-          return 0
-        }
-        const midPoint = Math.floor(currentTrack.duration / 2)
-        if (prev >= midPoint && !votingActive && candidates.length > 0) {
-          console.log("[v0] Activating voting at midpoint:", midPoint, "seconds, current progress:", prev)
-          setVotingActive(true)
-          setTimeRemaining(15)
-        }
-        return prev + 1
-      })
-    }, 1000)
-
-    return () => clearInterval(songTimer)
-  }, [currentTrack, nextTrack, votingActive, candidates])
 
   useEffect(() => {
     if (!votingActive || candidates.length === 0) return
@@ -190,6 +161,31 @@ export default function DJInterface() {
     }
   }
 
+  const handlePlayerProgress = (progress: number) => {
+    setSongProgress(progress)
+
+    if (!currentTrack) return
+
+    const midPoint = Math.floor(currentTrack.duration / 2)
+    if (progress >= midPoint && !votingActive && candidates.length > 0) {
+      console.log("[v0] Activating voting at midpoint:", midPoint, "seconds, current progress:", progress)
+      setVotingActive(true)
+      setTimeRemaining(15)
+    }
+  }
+
+  const handleTrackEnd = () => {
+    if (nextTrack) {
+      setCurrentTrack(nextTrack)
+      setSongProgress(0)
+      setVotingActive(false)
+      setVotedIndex(null)
+      setVotes([0, 0, 0, 0])
+      setNextTrack(null)
+      fetchSimilarTracks(nextTrack)
+    }
+  }
+
   if (isLoading || !currentTrack) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -200,6 +196,10 @@ export default function DJInterface() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
+      {currentTrack && (
+        <SpotifyPlayer track={currentTrack} onProgress={handlePlayerProgress} onTrackEnd={handleTrackEnd} />
+      )}
+
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold">DJ Interface</h1>

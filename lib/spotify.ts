@@ -19,6 +19,7 @@ export const spotifyApi = {
       "playlist-read-private",
       "playlist-read-collaborative",
       "user-top-read",
+      "streaming", // Added streaming scope for Web Playback SDK
     ]
 
     const params = new URLSearchParams({
@@ -177,6 +178,41 @@ export const spotifyApi = {
         Authorization: `Bearer ${accessToken}`,
       },
     })
+
+    return response.json()
+  },
+
+  startPlayback: async (accessToken: string, deviceId: string, trackUri: string) => {
+    const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uris: [trackUri],
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      console.error("[v0] Playback start failed:", error)
+      throw new Error("Failed to start playback")
+    }
+
+    return response
+  },
+
+  getPlaybackState: async (accessToken: string) => {
+    const response = await fetch("https://api.spotify.com/v1/me/player", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    if (response.status === 204) {
+      return null
+    }
 
     return response.json()
   },
