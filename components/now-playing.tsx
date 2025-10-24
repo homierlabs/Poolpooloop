@@ -25,20 +25,34 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
       console.log("[v0] Loading audio for track:", track.name, track.previewUrl)
       const newAudio = new Audio(track.previewUrl)
       newAudio.volume = 0.5
-      newAudio.loop = true
+      newAudio.loop = false
 
-      newAudio.play().catch((error) => {
-        console.error("[v0] Audio playback failed:", error)
-      })
+      const playAudio = () => {
+        newAudio.play().catch((error) => {
+          console.error("[v0] Audio playback failed:", error)
+          console.log("[v0] Note: Some browsers require user interaction before playing audio")
+        })
+      }
+
+      // Try to play immediately
+      playAudio()
+
+      // Also try on user interaction if autoplay fails
+      const handleInteraction = () => {
+        playAudio()
+        document.removeEventListener("click", handleInteraction)
+      }
+      document.addEventListener("click", handleInteraction)
 
       setAudio(newAudio)
 
       return () => {
+        document.removeEventListener("click", handleInteraction)
         newAudio.pause()
         newAudio.src = ""
       }
     } else {
-      console.log("[v0] No preview URL available for track:", track.name)
+      console.warn("[v0] No preview URL available for track:", track.name)
     }
   }, [track.id, track.previewUrl, track.name])
 

@@ -44,8 +44,8 @@ export default function DJInterface() {
           return 0
         }
         const midPoint = Math.floor(currentTrack.duration / 2)
-        if (prev === midPoint && !votingActive && candidates.length > 0) {
-          console.log("[v0] Activating voting at midpoint:", midPoint, "seconds")
+        if (prev >= midPoint && !votingActive && candidates.length > 0) {
+          console.log("[v0] Activating voting at midpoint:", midPoint, "seconds, current progress:", prev)
           setVotingActive(true)
           setTimeRemaining(15)
         }

@@ -33,6 +33,8 @@ export async function GET(request: Request) {
       id: data.id,
       name: data.name,
       artist: data.artists[0]?.name || "Unknown Artist",
+      album: data.album.name || "Unknown Album",
+      year: data.album.release_date ? new Date(data.album.release_date).getFullYear().toString() : "",
       albumArt: data.album.images[0]?.url || "",
       duration: Math.floor(data.duration_ms / 1000),
       previewUrl: data.preview_url || "",
