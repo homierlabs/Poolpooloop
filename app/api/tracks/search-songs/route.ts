@@ -16,6 +16,7 @@ export async function GET(request: Request) {
     const refreshToken = cookieStore.get("spotify_refresh_token")?.value
 
     if (!accessToken) {
+      console.error("[v0] No access token cookie present")
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
@@ -33,10 +34,13 @@ export async function GET(request: Request) {
       })
     }
 
-    // First attempt with existing access token
-    let response = await callSpotify(accessToken)
+    // First attempt
+    let response = await callSpotify(accessToken).catch((err) => {
+      console.error("[v0] Network/fetch error when calling Spotify search:", err)
+      throw err
+    })
 
-    // If token expired (401) and we have a refresh token, try to refresh and retry once
+    // If 401 and we have a refresh token, attempt refresh and retry once
     if (response.status === 401 && refreshToken) {
       try {
         console.log("[v0] Access token expired, attempting refresh")
@@ -45,7 +49,7 @@ export async function GET(request: Request) {
         if (tokenData && tokenData.access_token) {
           accessToken = tokenData.access_token
 
-          // Update cookies with the refreshed access token
+          // Persist refreshed tokens back to cookies
           cookieStore.set("spotify_access_token", accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -62,21 +66,23 @@ export async function GET(request: Request) {
             })
           }
 
-          // Retry once with new token
           response = await callSpotify(accessToken)
         } else {
-          console.error("[v0] refreshAccessToken did not return access_token", tokenData)
+          console.error("[v0] refreshAccessToken returned unexpected payload:", tokenData)
         }
       } catch (err) {
-        console.error("[v0] Token refresh failed:", err)
+        console.error("[v0] Token refresh attempt failed:", err)
+        // Let the original response fall through (or return a specific error)
       }
     }
 
-    const data = await response.json()
+    const data = await response.json().catch((err) => {
+      console.error("[v0] Failed to JSON-parse Spotify response:", err)
+      throw err
+    })
 
     if (!response.ok) {
-      console.error("[v0] Spotify API error:", response.status, data)
-      // Return Spotify's error payload so the client/network tab shows useful info
+      console.error("[v0] Spotify search returned error:", response.status, data)
       return NextResponse.json({ error: data }, { status: response.status })
     }
 
@@ -93,6 +99,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ tracks })
   } catch (error) {
     console.error("[v0] /api/tracks/search-songs failed:", error)
-    return NextResponse.json({ error: "Search failed" }, { status: 500 })
+    // Return a safe error for the client to display
+    return NextResponse.json({ error: "Search failed", details: String(error) }, { status: 500 })
   }
 }

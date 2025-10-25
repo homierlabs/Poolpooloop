@@ -21,6 +21,35 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Ensure the global callback exists before the SDK executes so the SDK doesn't throw */}
+        <script
+          // Define a safe callback and dispatch a custom event when called by the SDK
+          dangerouslySetInnerHTML={{
+            __html: `
+              // If the SDK calls onSpotifyWebPlaybackSDKReady before the app mounts,
+              // this ensures the callback exists and signals the app via an event.
+              (function(){
+                if (!window.onSpotifyWebPlaybackSDKReady) {
+                  window.onSpotifyWebPlaybackSDKReady = function() {
+                    try {
+                      window.dispatchEvent(new Event('spotify-sdk-ready'));
+                    } catch (e) {
+                      // older browsers
+                      var evt;
+                      if (typeof Event === 'function') {
+                        evt = new Event('spotify-sdk-ready');
+                      } else {
+                        evt = document.createEvent('Event');
+                        evt.initEvent('spotify-sdk-ready', true, true);
+                      }
+                      window.dispatchEvent(evt);
+                    }
+                  };
+                }
+              })();
+            `,
+          }}
+        />
         <script src="https://sdk.scdn.co/spotify-player.js" async></script>
       </head>
       <body className={`font-sans antialiased`}>
