@@ -11,14 +11,17 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setIsLoading(false)
-  }, [router])
+    // Always clear tokens and cookies for clean start
+    fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+      setIsLoading(false)
+    })
+  }, [])
 
   const handleLogin = async () => {
     try {
       const response = await fetch("/api/auth/login")
       const data = await response.json()
-      window.location.href = data.url
+      window.location.href = data.url // always to Spotify
     } catch (error) {
       console.error("[v0] Login failed:", error)
     }
