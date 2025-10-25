@@ -11,48 +11,87 @@ export async function GET(request: Request) {
   let accessToken = cookieStore.get("spotify_access_token")?.value
   const refreshToken = cookieStore.get("spotify_refresh_token")?.value
 
-  if (!refreshToken) {
-    return NextResponse.json({ error: "No refresh token present. Please reconnect Spotify." }, { status: 401 })
+  // If we already have a valid access token, try using it first.
+  // Only attempt refresh if Spotify returns a 401-like error or if we don't have an access token.
+  const doSearch = async (token: string) => {
+    const params = new URLSearchParams({ q: query, type: "track", limit: "10" })
+    const response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await response.json().catch(() => ({}))
+    return { response, data }
   }
 
-  // Always refresh the access token before every search
   try {
-    const tokenData = await spotifyApi.refreshAccessToken(refreshToken)
-    if (!tokenData || !tokenData.access_token) {
-      return NextResponse.json({ error: "Could not refresh access token", details: tokenData }, { status: 401 })
-    }
-    accessToken = tokenData.access_token
+    if (accessToken) {
+      const { response, data } = await doSearch(accessToken)
+      if (response.ok) {
+        const tracks = (data.tracks?.items || []).map((track: any) => ({
+          id: track.id,
+          name: track.name,
+          artist: (track.artists || []).map((a: any) => a.name).join(", ") || "Unknown Artist",
+          albumArt: track.album?.images?.[0]?.url || "/placeholder.svg?height=300&width=300",
+          duration: Math.floor(track.duration_ms / 1000),
+          previewUrl: track.preview_url || "",
+          uri: track.uri,
+        }))
+        return NextResponse.json({ tracks })
+      }
 
-    // Persist refreshed token(s)
-    cookieStore.set("spotify_access_token", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: tokenData.expires_in ?? 3600,
-    })
-    if (tokenData.refresh_token) {
-      cookieStore.set("spotify_refresh_token", tokenData.refresh_token, {
+      // If unauthorized (401), we'll attempt refresh (below). Otherwise, return Spotify error.
+      if (response.status !== 401) {
+        return NextResponse.json({ error: data }, { status: response.status })
+      }
+    }
+
+    // Need to refresh or we had no access token
+    if (!refreshToken) {
+      return NextResponse.json({ error: "No refresh token present. Please reconnect Spotify." }, { status: 401 })
+    }
+
+    // Attempt refresh
+    try {
+      const tokenData = await spotifyApi.refreshAccessToken(refreshToken)
+      // spotifyApi.refreshAccessToken now throws on non-ok — catch above will handle it
+      accessToken = tokenData.access_token
+      // Persist refreshed tokens (if provided)
+      cookieStore.set("spotify_access_token", accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge: tokenData.expires_in ?? 3600,
       })
+      if (tokenData.refresh_token) {
+        cookieStore.set("spotify_refresh_token", tokenData.refresh_token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 30,
+        })
+      }
+    } catch (refreshErr: any) {
+      // refreshAccessToken throws an Error when Spotify returns non-ok
+      console.error("[v0] refreshAccessToken failed:", refreshErr)
+      const body = (refreshErr as any).body ?? { message: String(refreshErr) }
+      const status = (refreshErr as any).status ?? 500
+      return NextResponse.json({ error: "refreshAccessToken failed", details: body }, { status })
     }
-  } catch (err) {
-    return NextResponse.json({ error: "refreshAccessToken failed", details: String(err) }, { status: 401 })
-  }
 
-  // Now always query Spotify with a fresh access token
-  const params = new URLSearchParams({ q: query, type: "track", limit: "10" })
-  try {
-    const response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    const data = await response.json()
-    if (!response.ok) {
-      return NextResponse.json({ error: data }, { status: response.status })
+    // Retry search with refreshed token
+    const { response: r2, data: d2 } = await (async () => {
+      const params = new URLSearchParams({ q: query, type: "track", limit: "10" })
+      const resp = await fetch(`https://api.spotify.com/v1/search?${params}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const dt = await resp.json().catch(() => ({}))
+      return { response: resp, data: dt }
+    })()
+
+    if (!r2.ok) {
+      return NextResponse.json({ error: d2 }, { status: r2.status })
     }
-    const tracks = (data.tracks?.items || []).map((track: any) => ({
+
+    const tracks = (d2.tracks?.items || []).map((track: any) => ({
       id: track.id,
       name: track.name,
       artist: (track.artists || []).map((a: any) => a.name).join(", ") || "Unknown Artist",
@@ -63,6 +102,7 @@ export async function GET(request: Request) {
     }))
     return NextResponse.json({ tracks })
   } catch (error) {
+    console.error("[v0] Spotify search failed:", error)
     return NextResponse.json({ error: "Spotify search failed", details: String(error) }, { status: 500 })
   }
 }

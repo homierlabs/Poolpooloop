@@ -19,6 +19,26 @@ function encodeClientCredentials(clientId: string, clientSecret: string) {
   throw new Error("No base64 encoder available")
 }
 
+async function postToken(body: URLSearchParams) {
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${encodeClientCredentials(CLIENT_ID, CLIENT_SECRET)}`,
+    },
+    body,
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    // Throw an Error with structured info so callers can respond appropriately
+    const err = new Error("Spotify token endpoint returned an error")
+    ;(err as any).status = response.status
+    ;(err as any).body = data
+    throw err
+  }
+  return data
+}
+
 export const spotifyApi = {
   getAuthUrl: () => {
     const scopes = [
@@ -39,42 +59,25 @@ export const spotifyApi = {
       redirect_uri: REDIRECT_URI,
       scope: scopes.join(" "),
     })
+    // If you want the consent dialog forced every time, append &show_dialog=true here.
     return `https://accounts.spotify.com/authorize?${params.toString()}`
   },
 
   getAccessToken: async (code: string) => {
-    const response = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${encodeClientCredentials(CLIENT_ID, CLIENT_SECRET)}`,
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: REDIRECT_URI,
-      }),
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: REDIRECT_URI,
     })
-    const data = await response.json()
-    if (!response.ok) {
-      console.error("[v0] Token request failed:", response.status, data)
-    }
-    return data
+    return postToken(body)
   },
 
   refreshAccessToken: async (refreshToken: string) => {
-    const response = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${encodeClientCredentials(CLIENT_ID, CLIENT_SECRET)}`,
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }),
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
     })
-    return response.json()
+    return postToken(body)
   },
 
   getUserProfile: async (accessToken: string) => {
@@ -186,9 +189,11 @@ export const spotifyApi = {
       }),
     })
     if (!response.ok) {
-      const error = await response.json()
+      const error = await response.json().catch(() => ({}))
       console.error("[v0] Playback start failed:", error)
-      throw new Error("Failed to start playback")
+      const err = new Error("Failed to start playback")
+      ;(err as any).body = error
+      throw err
     }
     return response
   },
