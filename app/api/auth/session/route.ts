@@ -9,8 +9,5 @@ export async function GET() {
     return NextResponse.json({ authenticated: false }, { status: 401 })
   }
 
-  return NextResponse.json({
-    authenticated: true,
-    accessToken: accessToken.value,
-  })
+  return NextResponse.json({ authenticated: true })
 }
