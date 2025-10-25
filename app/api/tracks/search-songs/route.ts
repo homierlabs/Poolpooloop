@@ -33,12 +33,13 @@ export async function GET(request: Request) {
       })
     }
 
-    // First attempt
+    // First attempt with existing access token
     let response = await callSpotify(accessToken)
 
     // If token expired (401) and we have a refresh token, try to refresh and retry once
     if (response.status === 401 && refreshToken) {
       try {
+        console.log("[v0] Access token expired, attempting refresh")
         const tokenData = await spotifyApi.refreshAccessToken(refreshToken)
 
         if (tokenData && tokenData.access_token) {
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
             })
           }
 
-          // Retry the Spotify call with new token
+          // Retry once with new token
           response = await callSpotify(accessToken)
         } else {
           console.error("[v0] refreshAccessToken did not return access_token", tokenData)
@@ -75,15 +76,15 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       console.error("[v0] Spotify API error:", response.status, data)
-      // Bubble up spotify's error message/status to the client for easier debugging
+      // Return Spotify's error payload so the client/network tab shows useful info
       return NextResponse.json({ error: data }, { status: response.status })
     }
 
     const tracks = (data.tracks?.items || []).map((track: any) => ({
       id: track.id,
       name: track.name,
-      artist: track.artists[0]?.name || "Unknown Artist",
-      albumArt: track.album.images[0]?.url || "",
+      artist: (track.artists || []).map((a: any) => a.name).join(", ") || "Unknown Artist",
+      albumArt: track.album?.images?.[0]?.url || "/placeholder.svg?height=300&width=300",
       duration: Math.floor(track.duration_ms / 1000),
       previewUrl: track.preview_url || "",
       uri: track.uri,
