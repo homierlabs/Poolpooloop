@@ -1,10 +1,14 @@
+// FILE: app/select-song/page.tsx
+// PURPOSE: Song selection page with Spotify search
+// USAGE: Page where user searches and selects starting track
+// REPLACE THE EXISTING FILE COMPLETELY
+
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Music, Play } from "lucide-react"
+import { Search, Music, Play, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -16,7 +20,9 @@ interface Track {
   artist: string
   albumArt: string
   duration: number
-  previewUrl: string
+  previewUrl: string | null
+  album: string
+  year: string
 }
 
 export default function SelectSongPage() {
@@ -25,6 +31,7 @@ export default function SelectSongPage() {
   const [searchResults, setSearchResults] = useState<Track[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string>("")
 
   useEffect(() => {
     checkAuth()
@@ -37,27 +44,45 @@ export default function SelectSongPage() {
         router.push("/")
         return
       }
-    } catch (error) {
-      router.push("/")
-    } finally {
       setIsLoading(false)
+    } catch (error) {
+      console.error("[v0] Auth check failed:", error)
+      router.push("/")
     }
   }
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!searchQuery.trim()) return
+    
+    if (!searchQuery.trim()) {
+      setError("Please enter a search term")
+      return
+    }
 
     setIsSearching(true)
+    setError("")
+    
     try {
       const response = await fetch(`/api/tracks/search-songs?q=${encodeURIComponent(searchQuery)}`)
+      
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Search failed")
+      }
+
       const data = await response.json()
 
-      if (data.tracks) {
+      if (data.tracks && data.tracks.length > 0) {
         setSearchResults(data.tracks)
+        setError("")
+      } else {
+        setSearchResults([])
+        setError("No tracks found. Try a different search term.")
       }
-    } catch (error) {
-      console.error("Search failed:", error)
+    } catch (error: any) {
+      console.error("[v0] Search failed:", error)
+      setError(error.message || "Search failed. Please try again.")
+      setSearchResults([])
     } finally {
       setIsSearching(false)
     }
@@ -85,7 +110,9 @@ export default function SelectSongPage() {
             </div>
           </div>
           <h1 className="text-4xl font-bold">Choose Your Starting Track</h1>
-          <p className="text-muted-foreground text-lg">Search for a song to kick off your DJ session</p>
+          <p className="text-muted-foreground text-lg">
+            Search for a song to kick off your DJ session
+          </p>
         </div>
 
         <form onSubmit={handleSearch} className="space-y-4">
@@ -95,12 +122,31 @@ export default function SelectSongPage() {
               type="text"
               placeholder="Search for a song or artist..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setError("")
+              }}
               className="pl-10 h-12 text-lg"
+              disabled={isSearching}
             />
           </div>
+          
+          {error && (
+            <div className="flex items-center gap-2 text-destructive text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <Button type="submit" className="w-full h-12 text-lg" disabled={isSearching}>
-            {isSearching ? "Searching..." : "Search"}
+            {isSearching ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-foreground mr-2"></div>
+                Searching...
+              </>
+            ) : (
+              "Search"
+            )}
           </Button>
         </form>
 
@@ -118,7 +164,7 @@ export default function SelectSongPage() {
                     <div className="relative w-16 h-16 rounded-md overflow-hidden flex-shrink-0 bg-muted">
                       {track.albumArt ? (
                         <Image
-                          src={track.albumArt || "/placeholder.svg"}
+                          src={track.albumArt}
                           alt={track.name}
                           fill
                           className="object-cover"
@@ -132,6 +178,7 @@ export default function SelectSongPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold truncate">{track.name}</h3>
                       <p className="text-sm text-muted-foreground truncate">{track.artist}</p>
+                      <p className="text-xs text-muted-foreground truncate">{track.album}</p>
                     </div>
                     <Button size="sm" variant="outline">
                       <Play className="w-4 h-4 mr-2" />
@@ -142,10 +189,6 @@ export default function SelectSongPage() {
               ))}
             </div>
           </div>
-        )}
-
-        {searchQuery && searchResults.length === 0 && !isSearching && (
-          <div className="text-center py-12 text-muted-foreground">No results found. Try a different search term.</div>
         )}
       </div>
     </div>

@@ -1,3 +1,8 @@
+// FILE: components/now-playing.tsx
+// PURPOSE: Display current and next track with progress visualization
+// USAGE: Used in app/dj/page.tsx to show playback state
+// REPLACE THE EXISTING FILE COMPLETELY
+
 "use client"
 
 import type { Track } from "@/lib/types"
@@ -13,50 +18,14 @@ interface NowPlayingProps {
 
 export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: NowPlayingProps) {
   const [bars, setBars] = useState<number[]>([])
-  const [audio, setAudio] = useState<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
     setBars(newBars)
   }, [])
 
-  useEffect(() => {
-    if (track.previewUrl) {
-      console.log("[v0] Loading audio for track:", track.name, track.previewUrl)
-      const newAudio = new Audio(track.previewUrl)
-      newAudio.volume = 0.5
-      newAudio.loop = false
-
-      const playAudio = () => {
-        newAudio.play().catch((error) => {
-          console.error("[v0] Audio playback failed:", error)
-          console.log("[v0] Note: Some browsers require user interaction before playing audio")
-        })
-      }
-
-      // Try to play immediately
-      playAudio()
-
-      // Also try on user interaction if autoplay fails
-      const handleInteraction = () => {
-        playAudio()
-        document.removeEventListener("click", handleInteraction)
-      }
-      document.addEventListener("click", handleInteraction)
-
-      setAudio(newAudio)
-
-      return () => {
-        document.removeEventListener("click", handleInteraction)
-        newAudio.pause()
-        newAudio.src = ""
-      }
-    } else {
-      console.warn("[v0] No preview URL available for track:", track.name)
-    }
-  }, [track.id, track.previewUrl, track.name])
-
-  const progressPercentage = (songProgress / track.duration) * 100
+  const trackDuration = track.duration || 180 // Fallback to 3 minutes
+  const progressPercentage = (songProgress / trackDuration) * 100
 
   return (
     <div className="mb-6 sm:mb-8 animate-slide-up">
@@ -83,10 +52,10 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
                 />
               </div>
               <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0">
-                <div className="text-base sm:text-lg font-bold truncate">{track.name || "Name of Song"}</div>
-                <div className="text-xs sm:text-sm text-muted-foreground truncate">{track.artist || "Artist"}</div>
-                <div className="text-xs text-muted-foreground/70 truncate">{track.album || "Album"}</div>
-                <div className="text-xs text-muted-foreground/70">{track.year || "Year"}</div>
+                <div className="text-base sm:text-lg font-bold truncate">{track.name || "Unknown Track"}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground truncate">{track.artist || "Unknown Artist"}</div>
+                <div className="text-xs text-muted-foreground/70 truncate">{track.album || "Unknown Album"}</div>
+                {track.year && <div className="text-xs text-muted-foreground/70">{track.year}</div>}
               </div>
             </div>
           </div>
@@ -98,12 +67,12 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
               </div>
               <div className="flex items-end gap-3 sm:gap-4">
                 <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0 sm:text-right sm:order-1">
-                  <div className="text-base sm:text-lg font-bold truncate">{nextTrack.name || "Name of Song"}</div>
+                  <div className="text-base sm:text-lg font-bold truncate">{nextTrack.name || "Unknown Track"}</div>
                   <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                    {nextTrack.artist || "Artist"}
+                    {nextTrack.artist || "Unknown Artist"}
                   </div>
-                  <div className="text-xs text-muted-foreground/70 truncate">{nextTrack.album || "Album"}</div>
-                  <div className="text-xs text-muted-foreground/70">{nextTrack.year || "Year"}</div>
+                  <div className="text-xs text-muted-foreground/70 truncate">{nextTrack.album || "Unknown Album"}</div>
+                  {nextTrack.year && <div className="text-xs text-muted-foreground/70">{nextTrack.year}</div>}
                 </div>
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg sm:order-2">
                   <Image
@@ -139,8 +108,13 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
 
           <div
             className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 transition-all duration-1000 ease-linear"
-            style={{ left: `${progressPercentage}%` }}
+            style={{ left: `${Math.min(progressPercentage, 100)}%` }}
           />
+        </div>
+
+        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+          <span>{Math.floor(songProgress / 60)}:{(songProgress % 60).toString().padStart(2, '0')}</span>
+          <span>{Math.floor(trackDuration / 60)}:{(trackDuration % 60).toString().padStart(2, '0')}</span>
         </div>
       </div>
     </div>

@@ -1,3 +1,8 @@
+// FILE: app/dj/page.tsx
+// PURPOSE: Main DJ interface with voting and playback control
+// USAGE: Main page after song selection - handles entire DJ flow
+// REPLACE THE EXISTING FILE COMPLETELY
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -10,6 +15,9 @@ import { Button } from "@/components/ui/button"
 import type { Track } from "@/lib/types"
 import { LogOut } from "lucide-react"
 
+const VOTING_DURATION = 15 // seconds
+const TRACK_DURATION_FALLBACK = 180 // 3 minutes if duration unknown
+
 export default function DJInterface() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -18,17 +26,19 @@ export default function DJInterface() {
   const [nextTrack, setNextTrack] = useState<Track | null>(null)
   const [votedIndex, setVotedIndex] = useState<number | null>(null)
   const [songProgress, setSongProgress] = useState(0)
-  const [timeRemaining, setTimeRemaining] = useState(15)
+  const [timeRemaining, setTimeRemaining] = useState(VOTING_DURATION)
   const [votes, setVotes] = useState<number[]>([0, 0, 0, 0])
   const [votingActive, setVotingActive] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string>("")
+  const [roundId, setRoundId] = useState<string>("")
 
   useEffect(() => {
     checkAuthAndFetch()
   }, [])
 
   useEffect(() => {
-    if (!votingActive || candidates.length === 0) return
+    if (!votingActive) return
 
     const votingTimer = setInterval(() => {
       setTimeRemaining((prev) => {
@@ -59,25 +69,24 @@ export default function DJInterface() {
         return
       }
 
-      await fetchInitialTrack()
+      await fetchInitialTrack(trackId)
     } catch (error) {
       console.error("[v0] Auth check failed:", error)
+      setError("Authentication failed")
       router.push("/")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const fetchInitialTrack = async () => {
+  const fetchInitialTrack = async (trackId: string) => {
     try {
-      const trackId = searchParams.get("trackId")
-
-      if (!trackId) {
-        router.push("/select-song")
-        return
+      const response = await fetch(`/api/tracks/by-id?id=${trackId}`)
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch track")
       }
 
-      const response = await fetch(`/api/tracks/by-id?id=${trackId}`)
       const data = await response.json()
 
       if (data.track) {
@@ -90,6 +99,7 @@ export default function DJInterface() {
       }
     } catch (error) {
       console.error("[v0] Failed to fetch initial track:", error)
+      setError("Failed to load track")
       router.push("/select-song")
     }
   }
@@ -105,50 +115,96 @@ export default function DJInterface() {
           .sort(() => Math.random() - 0.5)
           .slice(0, 4)
 
-        console.log("[v0] Loaded 4 similar tracks based on audio features (BPM, danceability, energy)")
+        console.log("[v0] Loaded 4 similar tracks")
         setCandidates(similarTracks)
+        // Create new voting round
+        setRoundId(`round_${Date.now()}_${track.id}`)
       } else {
+        console.warn("[v0] Not enough similar tracks, fetching fallback")
         const fallbackResponse = await fetch("/api/tracks")
         const fallbackData = await fallbackResponse.json()
-        const nextCandidates = selectNextCandidates(track, fallbackData.tracks)
-        setCandidates(nextCandidates)
+        
+        if (fallbackData.tracks && fallbackData.tracks.length > 0) {
+          const nextCandidates = fallbackData.tracks
+            .filter((t: Track) => t.id !== track.id)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 4)
+          setCandidates(nextCandidates)
+          setRoundId(`round_${Date.now()}_${track.id}`)
+        }
       }
     } catch (error) {
       console.error("[v0] Failed to fetch similar tracks:", error)
+      setError("Failed to load candidate tracks")
     }
   }
 
-  const selectNextCandidates = (current: Track, tracks: Track[]): Track[] => {
-    return tracks
-      .filter((t) => t.id !== current.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 4)
-  }
-
-  const handleVote = (index: number) => {
-    if (!votingActive || votedIndex !== null) return
+  const handleVote = async (index: number) => {
+    if (!votingActive || votedIndex !== null || !roundId) return
 
     setVotedIndex(index)
+    
+    // Optimistically update UI
     setVotes((prev) => {
       const newVotes = [...prev]
       newVotes[index] += 1
       return newVotes
     })
 
-    fetch("/api/vote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trackId: candidates[index].id }),
-    }).catch((error) => console.error("[v0] Vote submission failed:", error))
+    try {
+      const response = await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          trackId: candidates[index].id,
+          roundId 
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error("[v0] Vote failed:", data.error)
+        // Revert optimistic update
+        setVotes((prev) => {
+          const newVotes = [...prev]
+          newVotes[index] = Math.max(0, newVotes[index] - 1)
+          return newVotes
+        })
+        setVotedIndex(null)
+      } else {
+        console.log("[v0] Vote recorded successfully")
+      }
+    } catch (error) {
+      console.error("[v0] Vote submission failed:", error)
+      // Revert optimistic update
+      setVotes((prev) => {
+        const newVotes = [...prev]
+        newVotes[index] = Math.max(0, newVotes[index] - 1)
+        return newVotes
+      })
+      setVotedIndex(null)
+    }
   }
 
   const selectWinner = () => {
     const maxVotes = Math.max(...votes)
-    const winnerIndex = votes.indexOf(maxVotes)
+    
+    // Handle tie - pick random winner among tied tracks
+    const winnerIndices = votes
+      .map((v, i) => ({ votes: v, index: i }))
+      .filter(v => v.votes === maxVotes)
+      .map(v => v.index)
+    
+    const winnerIndex = winnerIndices[Math.floor(Math.random() * winnerIndices.length)]
 
-    if (winnerIndex !== -1 && candidates[winnerIndex]) {
-      console.log("[v0] Winner selected:", candidates[winnerIndex].name)
+    if (winnerIndex !== undefined && candidates[winnerIndex]) {
+      console.log("[v0] Winner selected:", candidates[winnerIndex].name, "with", maxVotes, "votes")
       setNextTrack(candidates[winnerIndex])
+    } else {
+      // Fallback: pick first candidate
+      console.log("[v0] No clear winner, selecting first candidate")
+      setNextTrack(candidates[0])
     }
   }
 
@@ -166,16 +222,20 @@ export default function DJInterface() {
 
     if (!currentTrack) return
 
-    const midPoint = Math.floor(currentTrack.duration / 2)
+    const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
+    const midPoint = Math.floor(trackDuration / 2)
+    
+    // Activate voting at midpoint
     if (progress >= midPoint && !votingActive && candidates.length > 0) {
       console.log("[v0] Activating voting at midpoint:", midPoint, "seconds, current progress:", progress)
       setVotingActive(true)
-      setTimeRemaining(15)
+      setTimeRemaining(VOTING_DURATION)
     }
   }
 
   const handleTrackEnd = () => {
     if (nextTrack) {
+      console.log("[v0] Moving to next track:", nextTrack.name)
       setCurrentTrack(nextTrack)
       setSongProgress(0)
       setVotingActive(false)
@@ -183,10 +243,31 @@ export default function DJInterface() {
       setVotes([0, 0, 0, 0])
       setNextTrack(null)
       fetchSimilarTracks(nextTrack)
+    } else {
+      console.log("[v0] No next track, staying on current")
     }
   }
 
-  if (isLoading || !currentTrack) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">{error}</p>
+          <Button onClick={() => router.push("/select-song")}>Back to Song Selection</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentTrack) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -196,9 +277,7 @@ export default function DJInterface() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      {currentTrack && (
-        <SpotifyPlayer track={currentTrack} onProgress={handlePlayerProgress} onTrackEnd={handleTrackEnd} />
-      )}
+      <SpotifyPlayer track={currentTrack} onProgress={handlePlayerProgress} onTrackEnd={handleTrackEnd} />
 
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex justify-between items-center">

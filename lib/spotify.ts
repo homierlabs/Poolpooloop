@@ -1,6 +1,12 @@
+// FILE: lib/spotify.ts
+// PURPOSE: Spotify Web API wrapper with token management and error handling
+// USAGE: Import spotifyApi from this file in API routes
+
+import './env' // Validate environment variables on import
+
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/api/auth/callback"
+const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI!
 
 // Universal, UTF-8 safe base64 encoder for Node, Edge, browser, etc.
 function encodeClientCredentials(clientId: string, clientSecret: string) {
@@ -30,13 +36,25 @@ async function postToken(body: URLSearchParams) {
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    // Throw an Error with structured info so callers can respond appropriately
     const err = new Error("Spotify token endpoint returned an error")
     ;(err as any).status = response.status
     ;(err as any).body = data
     throw err
   }
   return data
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      const response = await fetch(url, options)
+      return response
+    } catch (error) {
+      if (i === maxRetries) throw error
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)))
+    }
+  }
+  throw new Error('Max retries reached')
 }
 
 export const spotifyApi = {
@@ -58,8 +76,8 @@ export const spotifyApi = {
       response_type: "code",
       redirect_uri: REDIRECT_URI,
       scope: scopes.join(" "),
+      show_dialog: "false",
     })
-    // If you want the consent dialog forced every time, append &show_dialog=true here.
     return `https://accounts.spotify.com/authorize?${params.toString()}`
   },
 
@@ -81,56 +99,48 @@ export const spotifyApi = {
   },
 
   getUserProfile: async (accessToken: string) => {
-    const response = await fetch("https://api.spotify.com/v1/me", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+    const response = await fetchWithRetry("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
-    return response.json()
-  },
-
-  getRecommendations: async (accessToken: string, seedTracks: string[]) => {
-    const params = new URLSearchParams({
-      seed_tracks: seedTracks.slice(0, 5).join(","),
-      limit: "20",
-    })
-    const response = await fetch(`https://api.spotify.com/v1/recommendations?${params}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    if (!response.ok) {
+      throw new Error(`Failed to get user profile: ${response.status}`)
+    }
     return response.json()
   },
 
   getTrackFeatures: async (accessToken: string, trackIds: string[]) => {
-    const response = await fetch(`https://api.spotify.com/v1/audio-features?ids=${trackIds.join(",")}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    if (trackIds.length === 0) return { audio_features: [] }
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/audio-features?ids=${trackIds.join(",")}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      console.error("Failed to get track features:", response.status)
+      return { audio_features: [] }
+    }
     return response.json()
   },
 
   getUserTopTracks: async (accessToken: string, limit = 50) => {
-    const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=medium_term`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/me/top/tracks?limit=${limit}&time_range=medium_term`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      throw new Error(`Failed to get top tracks: ${response.status}`)
+    }
     return response.json()
   },
 
   searchTrack: async (accessToken: string, query: string) => {
-    const params = new URLSearchParams({
-      q: query,
-      type: "track",
-      limit: "1",
-    })
-    const response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    const params = new URLSearchParams({ q: query, type: "track", limit: "10" })
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/search?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      throw new Error(`Search failed: ${response.status}`)
+    }
     return response.json()
   },
 
@@ -142,7 +152,7 @@ export const spotifyApi = {
       danceability?: number
       valence?: number
       tempo?: number
-    },
+    }
   ) => {
     const params = new URLSearchParams({
       seed_tracks: seedTrackId,
@@ -160,52 +170,72 @@ export const spotifyApi = {
     if (targetFeatures.tempo !== undefined) {
       params.append("target_tempo", targetFeatures.tempo.toString())
     }
-    const response = await fetch(`https://api.spotify.com/v1/recommendations?${params}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/recommendations?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      console.error("Failed to get recommendations:", response.status)
+      return { tracks: [] }
+    }
     return response.json()
   },
 
   getSingleTrackFeatures: async (accessToken: string, trackId: string) => {
-    const response = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/audio-features/${trackId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      console.error("Failed to get single track features:", response.status)
+      return null
+    }
+    return response.json()
+  },
+
+  getTrackById: async (accessToken: string, trackId: string) => {
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/tracks/${trackId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!response.ok) {
+      throw new Error(`Failed to get track: ${response.status}`)
+    }
     return response.json()
   },
 
   startPlayback: async (accessToken: string, deviceId: string, trackUri: string) => {
-    const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        uris: [trackUri],
-      }),
-    })
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uris: [trackUri] }),
+      }
+    )
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      console.error("[v0] Playback start failed:", error)
+      console.error("Playback start failed:", error)
       const err = new Error("Failed to start playback")
       ;(err as any).body = error
+      ;(err as any).status = response.status
       throw err
     }
     return response
   },
 
   getPlaybackState: async (accessToken: string) => {
-    const response = await fetch("https://api.spotify.com/v1/me/player", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+    const response = await fetchWithRetry("https://api.spotify.com/v1/me/player", {
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (response.status === 204) {
       return null
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to get playback state: ${response.status}`)
     }
     return response.json()
   },
