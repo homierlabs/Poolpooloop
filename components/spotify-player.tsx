@@ -285,8 +285,8 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     return () => {
       console.log("[v0] 🧹 Cleanup - disconnecting player")
       if (progressInterval.current) clearInterval(progressInterval.current)
-      if (spotifyPlayer) {
-        spotifyPlayer.disconnect()
+      if (player) {
+        player.disconnect()
       }
     }
   }, [track.uri, volume, onProgress, onTrackEnd])
