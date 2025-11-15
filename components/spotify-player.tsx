@@ -1,15 +1,10 @@
-// FILE: components/spotify-player.tsx
-// PURPOSE: Spotify Web Playback SDK integration with full error handling
-// USAGE: Imported in app/dj/page.tsx to handle real-time playback
-// REPLACE THE EXISTING FILE COMPLETELY
-
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
 import type { Track } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { Play, Pause, Volume2, VolumeX, Loader2, AlertCircle } from "lucide-react"
+import { Play, Pause, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react'
 
 interface SpotifyPlayerProps {
   track: Track
@@ -34,7 +29,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const [isMuted, setIsMuted] = useState(false)
   const [error, setError] = useState<string>("")
   const [sdkReady, setSdkReady] = useState(false)
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false)
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
+  const playbackCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const initAttempted = useRef(false)
 
   // Listen for SDK ready event
@@ -98,7 +95,12 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       spotifyPlayer.addListener("player_state_changed", (state: any) => {
         if (!state) return
 
+        console.log("[v0] Player state changed - paused:", state.paused, "position:", state.position)
         setIsPlaying(!state.paused)
+        
+        if (!state.paused && state.position > 0) {
+          setHasStartedPlaying(true)
+        }
 
         if (progressInterval.current) {
           clearInterval(progressInterval.current)
@@ -183,13 +185,53 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
       }
+      if (playbackCheckInterval.current) {
+        clearInterval(playbackCheckInterval.current)
+      }
     }
   }, [sdkReady, initializePlayer, player])
+
+  useEffect(() => {
+    if (!player || !isReady || !deviceId) return
+
+    // Clear any existing check interval
+    if (playbackCheckInterval.current) {
+      clearInterval(playbackCheckInterval.current)
+      playbackCheckInterval.current = null
+    }
+
+    // Start monitoring playback state every 2 seconds
+    playbackCheckInterval.current = setInterval(async () => {
+      try {
+        const state = await player.getCurrentState()
+        if (state) {
+          const currentPosition = state.position
+          console.log("[v0] Playback check - position:", currentPosition, "paused:", state.paused)
+          
+          // If track started but is now paused unexpectedly at beginning, resume it
+          if (state.paused && currentPosition < 5000 && hasStartedPlaying) {
+            console.log("[v0] Detected stuck playback, resuming...")
+            await player.resume()
+          }
+        }
+      } catch (error) {
+        console.error("[v0] Error checking playback state:", error)
+      }
+    }, 2000)
+
+    return () => {
+      if (playbackCheckInterval.current) {
+        clearInterval(playbackCheckInterval.current)
+        playbackCheckInterval.current = null
+      }
+    }
+  }, [player, isReady, deviceId, hasStartedPlaying])
 
   // Auto-play when track changes and player ready
   useEffect(() => {
     if (isReady && deviceId && track.id) {
       console.log("[v0] Ready to play track:", track.name, track.id)
+      setHasStartedPlaying(false)
       playTrack()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -199,6 +241,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     if (!player) return
     try {
       await player.togglePlay()
+      console.log("[v0] Toggled playback")
     } catch (error) {
       console.error("[v0] Failed to toggle playback:", error)
       setError("Failed to toggle playback")
@@ -238,6 +281,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const playTrack = async () => {
     try {
       setIsLoading(true)
+      setHasStartedPlaying(false)
       const response = await fetch("/api/auth/session")
       const data = await response.json()
 
@@ -266,6 +310,19 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       }
 
       console.log("[v0] ✅ Playback started successfully")
+      
+      setTimeout(async () => {
+        try {
+          const state = await player?.getCurrentState()
+          if (state && state.paused) {
+            console.log("[v0] Player paused after start, resuming...")
+            await player.resume()
+          }
+        } catch (error) {
+          console.error("[v0] Error checking initial playback state:", error)
+        }
+      }, 1500)
+      
       setIsLoading(false)
       setError("")
     } catch (error) {
