@@ -204,12 +204,11 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
             if (play.ok || play.status === 204) {
               console.log("[v0] ✅✅✅ PLAYBACK STARTED SUCCESSFULLY")
               
-              // Start progress polling
               if (progressInterval.current) clearInterval(progressInterval.current)
               
               progressInterval.current = setInterval(async () => {
                 if (!spotifyPlayer) {
-                  console.log("[v0] ⚠️ Progress interval: player is null")
+                  console.log("[v0] ⚠️ Progress: No player instance")
                   return
                 }
 
@@ -217,12 +216,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
                   const state = await spotifyPlayer.getCurrentState()
                   
                   if (!state) {
-                    console.log("[v0] ⚠️ Progress interval: state is null - SDK not ready or track not loaded")
-                    return
-                  }
-
-                  if (!state.track_window || !state.track_window.current_track) {
-                    console.log("[v0] ⚠️ Progress interval: no current track in state")
+                    console.log("[v0] ⚠️ Progress: State is null")
                     return
                   }
 
@@ -230,34 +224,35 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
                   const pos = Math.floor(posMs / 1000)
                   const durMs = state.duration
                   const dur = Math.floor(durMs / 1000)
+                  const trackName = state.track_window?.current_track?.name || "Unknown"
                   
-                  console.log(`[v0] 🕐 PROGRESS UPDATE: ${pos}s / ${dur}s (${Math.round((pos/dur)*100)}%) | paused: ${state.paused} | track: ${state.track_window.current_track.name}`)
+                  // Always call onProgress, even if position hasn't changed
+                  console.log(`[v0] 🎵 Progress: ${pos}s / ${dur}s (${Math.round((pos/dur)*100)}%) | ${state.paused ? '⏸️' : '▶️'} | ${trackName}`)
                   
                   lastProgressRef.current = pos
                   onProgress(pos)
 
-                  // Safe track end detection
+                  // Track end detection
                   if (
                     state.paused &&
                     state.position === 0 &&
-                    lastProgressRef.current > 3 &&
-                    state.duration > 0 &&
-                    state.track_window.previous_tracks.length > 0
+                    lastProgressRef.current > 3
                   ) {
-                    console.log("[v0] 🎵 TRACK ENDED (detected safely)")
+                    console.log("[v0] 🏁 Track ended")
                     if (progressInterval.current) clearInterval(progressInterval.current)
                     onTrackEnd()
                   }
                 } catch (error) {
-                  console.error("[v0] ❌ Error getting player state:", error)
+                  console.error("[v0] ❌ Error getting state:", error)
                 }
               }, 500)
+              // End of change
             } else {
-              console.error("[v0] ❌ Play failed with status:", play.status)
+              console.error("[v0] ❌ Play failed:", play.status)
               setError(`Failed to start playback: ${play.status}`)
             }
           } catch (err) {
-            console.error("[v0] ❌ Playback sequence error:", err)
+            console.error("[v0] ❌ Playback error:", err)
             setError(`Playback failed: ${String(err)}`)
           }
         })
@@ -301,10 +296,10 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     initializePlayer()
 
     return () => {
-      console.log("[v0] 🧹 Cleanup - disconnecting player")
+      console.log("[v0] 🧹 Cleanup")
       if (progressInterval.current) clearInterval(progressInterval.current)
-      if (player) {
-        player.disconnect()
+      if (spotifyPlayer) {
+        spotifyPlayer.disconnect()
       }
     }
   }, [track.uri, volume, onProgress, onTrackEnd])
