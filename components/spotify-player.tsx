@@ -212,14 +212,20 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
                 
                 const state = await spotifyPlayer.getCurrentState()
                 
+                console.log("[v0] 📊 Progress poll - state:", state ? {
+                  position: state.position,
+                  duration: state.duration,
+                  paused: state.paused,
+                  positionSeconds: Math.floor(state.position / 1000)
+                } : 'null')
+                
                 if (!state) return
 
                 const pos = Math.floor(state.position / 1000)
                 
-                if (pos !== lastProgressRef.current) {
-                  lastProgressRef.current = pos
-                  onProgress(pos)
-                }
+                console.log("[v0] 🕐 Calling onProgress with:", pos)
+                lastProgressRef.current = pos
+                onProgress(pos)
 
                 // Safe track end detection that avoids false 0:00 triggers
                 if (
