@@ -127,6 +127,32 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           setError(`Playback error: ${message}`)
         })
 
+        spotifyPlayer.addListener("player_state_changed", (state) => {
+          if (!state) return
+
+          const posMs = state.position
+          const pos = Math.floor(posMs / 1000)
+          const durMs = state.duration
+          const dur = Math.floor(durMs / 1000)
+          const paused = state.paused
+          const trackName = state.track_window?.current_track?.name || "Unknown"
+          
+          console.log(`[v0] STATE CHANGED: ${paused ? 'PAUSED' : 'PLAYING'} | ${pos}s / ${dur}s | ${trackName}`)
+
+          setIsPlaying(!paused)
+          
+          // Update progress whenever state changes
+          onProgress(pos)
+          lastProgressRef.current = pos
+
+          // Detect track end
+          if (paused && pos === 0 && lastProgressRef.current > 3) {
+            console.log("[v0] Track ended")
+            if (progressInterval.current) clearInterval(progressInterval.current)
+            onTrackEnd()
+          }
+        })
+
         spotifyPlayer.addListener("ready", async ({ device_id }) => {
           console.log("🎧 Web Playback SDK device_id:", device_id)
           setDeviceId(device_id)
@@ -137,11 +163,11 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           playbackStarted.current = true
 
           try {
-            // 1. Wait for Spotify to activate device internally
+            console.log("[v0] Waiting 1.2s for device to register...")
             await new Promise((res) => setTimeout(res, 1200))
 
-            // 2. Transfer playback so Web Player becomes the active device
-            const transfer = await fetch("https://api.spotify.com/v1/me/player", {
+            console.log("[v0] Transferring playback to web player...")
+            await fetch("https://api.spotify.com/v1/me/player", {
               method: "PUT",
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -153,38 +179,10 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }),
             })
 
-            console.log("Transfer status:", transfer.status)
+            console.log("[v0] Waiting 800ms for device activation...")
+            await new Promise((res) => setTimeout(res, 800))
 
-            // 3. Poll devices list to confirm Spotify has activated this device
-            let deviceConfirmed = false
-            for (let i = 0; i < 6; i++) {
-              const devicesResp = await fetch("https://api.spotify.com/v1/me/player/devices", {
-                headers: { Authorization: `Bearer ${token}` }
-              })
-
-              const devicesJson = await devicesResp.json()
-              console.log(`[v0] Devices poll ${i + 1}:`, devicesJson)
-
-              if (Array.isArray(devicesJson.devices)) {
-                const found = devicesJson.devices.find((d: any) => d.id === device_id)
-                if (found) {
-                  console.log("[v0] ✅ Device confirmed active:", found)
-                  deviceConfirmed = true
-                  break
-                }
-              }
-
-              await new Promise((res) => setTimeout(res, 400))
-            }
-
-            if (!deviceConfirmed) {
-              console.warn("[v0] ⚠️ Device did NOT show up in devices list — playback may fail")
-            }
-
-            // 4. Let Spotify settle the active device internally
-            await new Promise((res) => setTimeout(res, 500))
-
-            // 5. Start the song
+            console.log("[v0] Starting playback...")
             const play = await fetch(
               `https://api.spotify.com/v1/me/player/play?device_id=${device_id}`,
               {
@@ -199,7 +197,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }
             )
 
-            console.log("Play status:", play.status)
+            console.log("[v0] Play API status:", play.status)
 
             if (play.ok || play.status === 204) {
               console.log("[v0] ✅✅✅ PLAYBACK STARTED SUCCESSFULLY")
@@ -207,70 +205,38 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               if (progressInterval.current) clearInterval(progressInterval.current)
               
               progressInterval.current = setInterval(async () => {
-                if (!spotifyPlayer) {
-                  console.log("[v0] ⚠️ Progress: No player instance")
-                  return
-                }
+                if (!spotifyPlayer) return
 
                 try {
                   const state = await spotifyPlayer.getCurrentState()
-                  
-                  if (!state) {
-                    console.log("[v0] ⚠️ Progress: State is null")
-                    return
-                  }
+                  if (!state) return
 
-                  const posMs = state.position
-                  const pos = Math.floor(posMs / 1000)
-                  const durMs = state.duration
-                  const dur = Math.floor(durMs / 1000)
-                  const trackName = state.track_window?.current_track?.name || "Unknown"
+                  const pos = Math.floor(state.position / 1000)
                   
-                  // Always call onProgress, even if position hasn't changed
-                  console.log(`[v0] 🎵 Progress: ${pos}s / ${dur}s (${Math.round((pos/dur)*100)}%) | ${state.paused ? '⏸️' : '▶️'} | ${trackName}`)
-                  
-                  lastProgressRef.current = pos
-                  onProgress(pos)
-
-                  // Track end detection
-                  if (
-                    state.paused &&
-                    state.position === 0 &&
-                    lastProgressRef.current > 3
-                  ) {
-                    console.log("[v0] 🏁 Track ended")
-                    if (progressInterval.current) clearInterval(progressInterval.current)
-                    onTrackEnd()
+                  // Only update if position has advanced
+                  if (pos > lastProgressRef.current) {
+                    console.log(`[v0] Poll update: ${pos}s`)
+                    lastProgressRef.current = pos
+                    onProgress(pos)
                   }
                 } catch (error) {
-                  console.error("[v0] ❌ Error getting state:", error)
+                  console.error("[v0] Poll error:", error)
                 }
-              }, 500)
-              // End of change
+              }, 1000)
             } else {
-              console.error("[v0] ❌ Play failed:", play.status)
+              console.error("[v0] Play failed:", play.status)
+              const errorText = await play.text()
+              console.error("[v0] Error response:", errorText)
               setError(`Failed to start playback: ${play.status}`)
             }
           } catch (err) {
-            console.error("[v0] ❌ Playback error:", err)
+            console.error("[v0] Playback error:", err)
             setError(`Playback failed: ${String(err)}`)
           }
         })
 
         spotifyPlayer.addListener("not_ready", ({ device_id }) => {
           console.log("[v0] ⚠️ Device NOT READY:", device_id)
-        })
-
-        spotifyPlayer.addListener("player_state_changed", (state) => {
-          if (!state) return
-
-          const pos = Math.floor(state.position / 1000)
-          const dur = Math.floor(state.duration / 1000)
-          const paused = state.paused
-          
-          console.log(`[v0] STATE: ${paused ? '⏸️ PAUSED' : '▶️ PLAYING'} | Position: ${pos}s / ${dur}s`)
-
-          setIsPlaying(!paused)
         })
 
         console.log("[v0] Connecting player to Spotify...")
