@@ -218,7 +218,8 @@ export default function DJInterface() {
     setSongProgress(progress)
     console.log(`[v0] 🎯 SET STATE TO: ${progress}s`)
 
-    if (progress === -1 || progress === 0) {
+    // Skip voting logic during initialization
+    if (progress <= 0) {
       console.log("[v0] Skipping voting check during initialization")
       return
     }

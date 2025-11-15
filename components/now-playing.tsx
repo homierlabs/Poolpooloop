@@ -2,7 +2,7 @@
 
 import type { Track } from "@/lib/types"
 import Image from "next/image"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 
 interface NowPlayingProps {
   track: Track
@@ -13,68 +13,15 @@ interface NowPlayingProps {
 
 export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: NowPlayingProps) {
   const [bars, setBars] = useState<number[]>([])
-  const [localProgress, setLocalProgress] = useState(0)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number>(0)
-  const timerStartedRef = useRef(false)
 
   useEffect(() => {
     const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
     setBars(newBars)
   }, [track.id])
 
-  useEffect(() => {
-    if (songProgress === -1) {
-      console.log("[v0] NowPlaying: Reset signal received")
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-      setLocalProgress(0)
-      timerStartedRef.current = false
-      return
-    }
-    
-    if (songProgress === 0 && !timerStartedRef.current) {
-      console.log("[v0] NowPlaying: Starting independent progress timer synced with audio")
-      
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-      
-      setLocalProgress(0)
-      startTimeRef.current = Date.now()
-      timerStartedRef.current = true
-
-      // Update progress every second
-      intervalRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-        setLocalProgress(elapsed)
-      }, 1000)
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-    }
-  }, [songProgress])
-
-  useEffect(() => {
-    console.log("[v0] NowPlaying: Track changed, resetting timer state")
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    setLocalProgress(0)
-    timerStartedRef.current = false
-  }, [track.id])
-
   const trackDuration = track.duration || 180
-  const progressPercentage = Math.min((localProgress / trackDuration) * 100, 100)
+  const displayProgress = songProgress < 0 ? 0 : songProgress
+  const progressPercentage = Math.min((displayProgress / trackDuration) * 100, 100)
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -168,7 +115,7 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
         </div>
 
         <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-          <span>{formatTime(localProgress)}</span>
+          <span>{formatTime(displayProgress)}</span>
           <span>{formatTime(trackDuration)}</span>
         </div>
       </div>
