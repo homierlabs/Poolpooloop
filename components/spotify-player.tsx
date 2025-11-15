@@ -24,6 +24,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const lastProgressRef = useRef<number>(0)
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
   const playerInitialized = useRef(false)
+  const playbackStarted = useRef(false)
 
   useEffect(() => {
     let spotifyPlayer: Spotify.Player | null = null
@@ -53,7 +54,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           await new Promise<void>((resolve, reject) => {
             let resolved = false
             
-            // Method 1: Polling every 100ms
             const pollInterval = setInterval(() => {
               if (window.Spotify && !resolved) {
                 resolved = true
@@ -63,7 +63,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }
             }, 100)
             
-            // Method 2: SDK ready callback
             window.onSpotifyWebPlaybackSDKReady = () => {
               if (!resolved) {
                 resolved = true
@@ -73,7 +72,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }
             }
 
-            // Timeout after 15 seconds
             setTimeout(() => {
               if (!resolved) {
                 resolved = true
@@ -129,11 +127,88 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           setError(`Playback error: ${message}`)
         })
 
-        spotifyPlayer.addListener("ready", ({ device_id }) => {
-          console.log("[v0] ✅✅✅ PLAYER READY EVENT - Device ID:", device_id)
+        spotifyPlayer.addListener("ready", async ({ device_id }) => {
+          console.log("🎧 Web Playback SDK device_id:", device_id)
           setDeviceId(device_id)
           setError("")
           setIsLoading(false)
+
+          if (playbackStarted.current || !track.uri) return
+          playbackStarted.current = true
+
+          try {
+            // 1. Wait for Spotify to activate device internally
+            await new Promise((res) => setTimeout(res, 1200))
+
+            // 2. Transfer playback so Web Player becomes the active device
+            const transfer = await fetch("https://api.spotify.com/v1/me/player", {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                device_ids: [device_id],
+                play: false,
+              }),
+            })
+
+            console.log("Transfer status:", transfer.status)
+
+            // 3. Wait a bit more so Spotify updates active device
+            await new Promise((res) => setTimeout(res, 500))
+
+            // 4. Finally start the song
+            const play = await fetch(
+              `https://api.spotify.com/v1/me/player/play?device_id=${device_id}`,
+              {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  uris: [track.uri],
+                }),
+              }
+            )
+
+            console.log("Play status:", play.status)
+
+            if (play.ok || play.status === 204) {
+              console.log("[v0] ✅✅✅ PLAYBACK STARTED SUCCESSFULLY")
+              
+              // Start progress polling
+              if (progressInterval.current) clearInterval(progressInterval.current)
+              
+              progressInterval.current = setInterval(async () => {
+                if (!spotifyPlayer) return
+                
+                const state = await spotifyPlayer.getCurrentState()
+                
+                if (!state) return
+
+                const pos = Math.floor(state.position / 1000)
+                
+                if (pos !== lastProgressRef.current) {
+                  lastProgressRef.current = pos
+                  onProgress(pos)
+                }
+
+                // Track ended detection
+                if (state.position === 0 && state.paused && lastProgressRef.current > 5) {
+                  console.log("[v0] 🎵 TRACK ENDED")
+                  onTrackEnd()
+                }
+              }, 500)
+            } else {
+              console.error("[v0] ❌ Play failed with status:", play.status)
+              setError(`Failed to start playback: ${play.status}`)
+            }
+          } catch (err) {
+            console.error("[v0] ❌ Playback sequence error:", err)
+            setError(`Playback failed: ${String(err)}`)
+          }
         })
 
         spotifyPlayer.addListener("not_ready", ({ device_id }) => {
@@ -141,29 +216,15 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         })
 
         spotifyPlayer.addListener("player_state_changed", (state) => {
-          if (!state) {
-            console.log("[v0] STATE: null (this is normal during initialization)")
-            return
-          }
+          if (!state) return
 
           const pos = Math.floor(state.position / 1000)
           const dur = Math.floor(state.duration / 1000)
           const paused = state.paused
           
-          console.log(`[v0] STATE: ${paused ? '⏸️ PAUSED' : '▶️ PLAYING'} | Position: ${pos}s / ${dur}s | Track: ${state.track_window.current_track.name}`)
+          console.log(`[v0] STATE: ${paused ? '⏸️ PAUSED' : '▶️ PLAYING'} | Position: ${pos}s / ${dur}s`)
 
           setIsPlaying(!paused)
-          
-          if (pos !== lastProgressRef.current) {
-            lastProgressRef.current = pos
-            onProgress(pos)
-          }
-
-          // Track ended detection
-          if (state.position === 0 && paused && lastProgressRef.current > 5) {
-            console.log("[v0] 🎵 TRACK ENDED - calling onTrackEnd")
-            onTrackEnd()
-          }
         })
 
         console.log("[v0] Connecting player to Spotify...")
@@ -195,109 +256,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         spotifyPlayer.disconnect()
       }
     }
-  }, [volume, onProgress, onTrackEnd])
-
-  useEffect(() => {
-    if (!deviceId || !track.uri || !player) {
-      console.log("[v0] ⏳ Waiting for playback prerequisites:", {
-        deviceId: !!deviceId,
-        trackUri: !!track.uri,
-        player: !!player
-      })
-      return
-    }
-
-    const startPlayback = async () => {
-      try {
-        console.log("[v0] ====== STARTING PLAYBACK SEQUENCE ======")
-        console.log("[v0] Track URI:", track.uri)
-        console.log("[v0] Track Name:", track.name)
-        console.log("[v0] Device ID:", deviceId)
-        
-        setError("")
-
-        const sessionRes = await fetch("/api/auth/session")
-        const sessionData = await sessionRes.json()
-        const token = sessionData.accessToken
-
-        console.log("[v0] 🔄 STEP 1: Transferring playback to web player device...")
-        const transferResponse = await fetch(`https://api.spotify.com/v1/me/player`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            device_ids: [deviceId],
-            play: false,
-          }),
-        })
-
-        if (!transferResponse.ok && transferResponse.status !== 204) {
-          console.warn("[v0] ⚠️ Device transfer returned status:", transferResponse.status)
-          const errorText = await transferResponse.text()
-          console.warn("[v0] Transfer response:", errorText)
-        } else {
-          console.log("[v0] ✅ Device transfer successful (status:", transferResponse.status, ")")
-        }
-
-        console.log("[v0] ⏳ STEP 2: Waiting 500ms for device activation...")
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        console.log("[v0] ▶️ STEP 3: Starting playback via Web API...")
-        const playResponse = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            uris: [track.uri],
-            position_ms: 0,
-          }),
-        })
-
-        if (!playResponse.ok && playResponse.status !== 204) {
-          const errorText = await playResponse.text()
-          console.error("[v0] ❌ PLAYBACK START FAILED - Status:", playResponse.status)
-          console.error("[v0] Error details:", errorText)
-          setError(`Failed to start playback: ${playResponse.status}`)
-          return
-        }
-
-        console.log("[v0] ✅✅✅ PLAYBACK STARTED SUCCESSFULLY")
-        console.log("[v0] Full track should now be playing continuously")
-        
-        if (progressInterval.current) clearInterval(progressInterval.current)
-        
-        progressInterval.current = setInterval(async () => {
-          if (!player) return
-          
-          const state = await player.getCurrentState()
-          
-          if (!state) {
-            console.log("[v0] STATE POLL: null (initializing, this is OK)")
-            return
-          }
-
-          const pos = Math.floor(state.position / 1000)
-          
-          if (pos !== lastProgressRef.current) {
-            lastProgressRef.current = pos
-            onProgress(pos)
-          }
-        }, 500)
-
-        console.log("[v0] ✅ Progress polling started (500ms interval)")
-
-      } catch (err) {
-        console.error("[v0] ❌ PLAYBACK SEQUENCE ERROR:", err)
-        setError(`Playback failed: ${String(err)}`)
-      }
-    }
-
-    startPlayback()
-  }, [deviceId, track.uri, track.name, player, onProgress, onTrackEnd])
+  }, [track.uri, volume, onProgress, onTrackEnd])
 
   const togglePlayPause = async () => {
     if (!player) return
@@ -347,7 +306,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       </div>
     )
   }
-
 
   return (
     <div className="fixed bottom-6 right-6 bg-card border border-border rounded-lg shadow-lg p-4 flex flex-col gap-3 z-50 min-w-[280px]">
