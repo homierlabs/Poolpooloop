@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef } from "react"
 import type { Track } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -12,250 +12,252 @@ interface SpotifyPlayerProps {
   onTrackEnd: () => void
 }
 
-declare global {
-  interface Window {
-    onSpotifyWebPlaybackSDKReady: () => void
-    Spotify: any
-  }
-}
-
 export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerProps) {
-  const [player, setPlayer] = useState<any>(null)
+  const [player, setPlayer] = useState<Spotify.Player | null>(null)
   const [deviceId, setDeviceId] = useState<string>("")
-  const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [volume, setVolume] = useState(50)
   const [isMuted, setIsMuted] = useState(false)
   const [error, setError] = useState<string>("")
-  const [sdkReady, setSdkReady] = useState(false)
+  const [isPremium, setIsPremium] = useState(true)
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
-  const watchdogInterval = useRef<NodeJS.Timeout | null>(null)
-  const lastPosition = useRef<number>(0)
-  const stuckCount = useRef<number>(0)
-  const shouldBePlaying = useRef<boolean>(false)
-  const initAttempted = useRef(false)
+  const lastProgressRef = useRef<number>(0)
 
-  // Listen for SDK ready event
   useEffect(() => {
-    const handleSDKReady = () => {
-      console.log("[v0] Spotify SDK is ready")
-      setSdkReady(true)
-    }
+    let spotifyPlayer: Spotify.Player | null = null
 
-    if (window.Spotify) {
-      handleSDKReady()
-    } else {
-      window.addEventListener('spotify-sdk-ready', handleSDKReady)
-    }
+    const initializePlayer = async () => {
+      try {
+        console.log("[v0] Fetching access token...")
+        const sessionRes = await fetch("/api/auth/session")
+        const sessionData = await sessionRes.json()
 
-    return () => {
-      window.removeEventListener('spotify-sdk-ready', handleSDKReady)
-    }
-  }, [])
+        if (!sessionData.authenticated || !sessionData.accessToken) {
+          setError("Not authenticated. Please log in again.")
+          setIsLoading(false)
+          return
+        }
 
-  // Initialize player when SDK is ready
-  const initializePlayer = useCallback(async () => {
-    if (initAttempted.current || !sdkReady) return
-    initAttempted.current = true
+        const token = sessionData.accessToken
+        console.log("[v0] Access token obtained")
 
-    try {
-      console.log("[v0] Fetching access token...")
-      const response = await fetch("/api/auth/session")
-      const data = await response.json()
+        // Wait for SDK to be ready
+        if (!window.Spotify) {
+          console.log("[v0] Waiting for Spotify SDK...")
+          await new Promise<void>((resolve) => {
+            window.addEventListener('spotify-sdk-ready', () => resolve(), { once: true })
+            // Timeout after 10 seconds
+            setTimeout(() => resolve(), 10000)
+          })
+        }
 
-      if (!data.accessToken) {
-        setError("Not authenticated. Please log in again.")
-        setIsLoading(false)
-        return
-      }
+        if (!window.Spotify) {
+          setError("Spotify SDK failed to load")
+          setIsLoading(false)
+          return
+        }
 
-      console.log("[v0] Creating Spotify Player...")
-      const spotifyPlayer = new window.Spotify.Player({
-        name: "DJ Voting Interface",
-        getOAuthToken: (cb: (token: string) => void) => {
-          cb(data.accessToken)
-        },
-        volume: volume / 100,
-      })
+        console.log("[v0] Creating Spotify Player...")
+        spotifyPlayer = new window.Spotify.Player({
+          name: "DJ Interface Player",
+          getOAuthToken: (cb) => {
+            console.log("[v0] Providing OAuth token")
+            cb(token)
+          },
+          volume: volume / 100,
+        })
 
-      spotifyPlayer.addListener("ready", ({ device_id }: { device_id: string }) => {
-        console.log("[v0] ✅ Spotify Player ready with Device ID:", device_id)
-        setDeviceId(device_id)
-        setIsReady(true)
-        setIsLoading(false)
-        setError("")
-      })
+        // Error handling
+        spotifyPlayer.addListener("initialization_error", ({ message }) => {
+          console.error("[v0] Initialization error:", message)
+          setError(`Initialization error: ${message}`)
+          setIsLoading(false)
+        })
 
-      spotifyPlayer.addListener("not_ready", ({ device_id }: { device_id: string }) => {
-        console.log("[v0] ⚠️ Device ID has gone offline:", device_id)
-        setError("Player went offline")
-        setIsLoading(false)
-      })
+        spotifyPlayer.addListener("authentication_error", ({ message }) => {
+          console.error("[v0] Authentication error:", message)
+          setError(`Authentication error: ${message}`)
+          setIsLoading(false)
+        })
 
-      spotifyPlayer.addListener("player_state_changed", (state: any) => {
-        if (!state) return
+        spotifyPlayer.addListener("account_error", ({ message }) => {
+          console.error("[v0] Account error:", message)
+          setError("Spotify Premium required for playback")
+          setIsPremium(false)
+          setIsLoading(false)
+        })
 
-        console.log("[v0] Player state - paused:", state.paused, "position:", state.position / 1000, "s")
-        setIsPlaying(!state.paused)
+        spotifyPlayer.addListener("playback_error", ({ message }) => {
+          console.error("[v0] Playback error:", message)
+          setError(`Playback error: ${message}`)
+        })
+
+        // Ready
+        spotifyPlayer.addListener("ready", ({ device_id }) => {
+          console.log("[v0] Player ready with Device ID:", device_id)
+          setDeviceId(device_id)
+          setError("")
+          setIsLoading(false)
+        })
+
+        // Not Ready
+        spotifyPlayer.addListener("not_ready", ({ device_id }) => {
+          console.log("[v0] Device has gone offline:", device_id)
+        })
+
+        // Player state changed
+        spotifyPlayer.addListener("player_state_changed", (state) => {
+          if (!state) {
+            console.log("[v0] Player state is null")
+            return
+          }
+
+          console.log("[v0] Player state changed:", {
+            paused: state.paused,
+            position: state.position,
+            duration: state.duration,
+          })
+
+          setIsPlaying(!state.paused)
+          
+          const currentProgress = Math.floor(state.position / 1000)
+          lastProgressRef.current = currentProgress
+          onProgress(currentProgress)
+
+          // Check if track ended
+          if (state.position === 0 && state.paused && lastProgressRef.current > 0) {
+            console.log("[v0] Track ended")
+            onTrackEnd()
+          }
+        })
+
+        // Connect to the player
+        console.log("[v0] Connecting player...")
+        const connected = await spotifyPlayer.connect()
         
-        if (!state.paused) {
-          shouldBePlaying.current = true
+        if (!connected) {
+          console.error("[v0] Failed to connect player")
+          setError("Failed to connect player")
+          setIsLoading(false)
+          return
         }
 
-        if (progressInterval.current) {
-          clearInterval(progressInterval.current)
-          progressInterval.current = null
-        }
-
-        if (!state.paused) {
-          progressInterval.current = setInterval(() => {
-            spotifyPlayer.getCurrentState().then((currentState: any) => {
-              if (currentState) {
-                const progress = Math.floor(currentState.position / 1000)
-                onProgress(progress)
-
-                if (currentState.paused && 
-                    currentState.position === 0 && 
-                    currentState.track_window.previous_tracks.length > 0) {
-                  console.log("[v0] Track ended")
-                  if (progressInterval.current) {
-                    clearInterval(progressInterval.current)
-                    progressInterval.current = null
-                  }
-                  onTrackEnd()
-                }
-              }
-            })
-          }, 1000)
-        }
-      })
-
-      spotifyPlayer.addListener("initialization_error", ({ message }: { message: string }) => {
-        console.error("[v0] ❌ Initialization error:", message)
-        setError(`Initialization error: ${message}`)
-        setIsLoading(false)
-      })
-
-      spotifyPlayer.addListener("authentication_error", ({ message }: { message: string }) => {
-        console.error("[v0] ❌ Authentication error:", message)
-        setError(`Authentication error: ${message}`)
-        setIsLoading(false)
-      })
-
-      spotifyPlayer.addListener("account_error", ({ message }: { message: string }) => {
-        console.error("[v0] ❌ Account error:", message)
-        setError("Spotify Premium required")
-        setIsLoading(false)
-      })
-
-      spotifyPlayer.addListener("playback_error", ({ message }: { message: string }) => {
-        console.error("[v0] ❌ Playback error:", message)
-        setError(`Playback error: ${message}`)
-      })
-
-      console.log("[v0] Connecting player...")
-      const connected = await spotifyPlayer.connect()
-
-      if (connected) {
-        console.log("[v0] ✅ Player connected successfully")
+        console.log("[v0] Player connected successfully")
         setPlayer(spotifyPlayer)
-      } else {
-        console.error("[v0] ❌ Player failed to connect")
-        setError("Failed to connect player")
+
+      } catch (err) {
+        console.error("[v0] Player initialization error:", err)
+        setError(`Failed to initialize: ${String(err)}`)
         setIsLoading(false)
       }
-    } catch (error) {
-      console.error("[v0] ❌ Failed to initialize Spotify player:", error)
-      setError("Failed to initialize player")
-      setIsLoading(false)
     }
-  }, [sdkReady, volume, onProgress, onTrackEnd])
 
-  useEffect(() => {
-    if (sdkReady && !initAttempted.current) {
-      initializePlayer()
-    }
+    initializePlayer()
 
     return () => {
-      if (player) {
-        console.log("[v0] Disconnecting player")
-        player.disconnect()
-      }
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
       }
-      if (watchdogInterval.current) {
-        clearInterval(watchdogInterval.current)
+      if (spotifyPlayer) {
+        console.log("[v0] Disconnecting player")
+        spotifyPlayer.disconnect()
       }
     }
-  }, [sdkReady, initializePlayer, player])
+  }, [volume, onProgress, onTrackEnd])
 
   useEffect(() => {
-    if (!player || !shouldBePlaying.current) return
+    if (!deviceId || !track.uri) return
 
-    if (watchdogInterval.current) {
-      clearInterval(watchdogInterval.current)
-    }
-
-    watchdogInterval.current = setInterval(async () => {
+    const startPlayback = async () => {
       try {
-        const state = await player.getCurrentState()
-        if (!state) return
+        console.log("[v0] Starting playback for track:", track.name, "URI:", track.uri)
+        setError("")
 
-        const currentPos = Math.floor(state.position / 1000)
-        console.log("[v0] Watchdog check - paused:", state.paused, "position:", currentPos, "s")
+        const response = await fetch("/api/playback/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId,
+            trackUri: track.uri,
+          }),
+        })
 
-        if (shouldBePlaying.current) {
-          if (state.paused) {
-            console.log("[v0] 🔧 Watchdog detected paused player, resuming...")
-            await player.resume()
-            stuckCount.current = 0
-          } else if (currentPos === lastPosition.current && currentPos > 0) {
-            stuckCount.current++
-            console.log("[v0] ⚠️ Position stuck at", currentPos, "s, stuck count:", stuckCount.current)
-            
-            if (stuckCount.current >= 1) {
-              console.log("[v0] 🔧 Watchdog forcing resume due to stuck position...")
-              await player.resume()
-              stuckCount.current = 0
-            }
-          } else {
-            stuckCount.current = 0
-          }
+        const data = await response.json()
+
+        if (!response.ok) {
+          console.error("[v0] Failed to start playback:", data)
+          setError(data.error || "Failed to start playback")
+          return
         }
 
-        lastPosition.current = currentPos
-      } catch (err) {
-        console.error("[v0] Watchdog error:", err)
-      }
-    }, 500) // Changed from 2000ms to 500ms
+        console.log("[v0] Playback started successfully")
+        
+        // Wait a bit then resume if needed
+        setTimeout(async () => {
+          if (player) {
+            const state = await player.getCurrentState()
+            if (state && state.paused) {
+              console.log("[v0] Resuming playback after initial start")
+              await player.resume()
+            }
+          }
+        }, 1000)
 
-    return () => {
-      if (watchdogInterval.current) {
-        clearInterval(watchdogInterval.current)
+      } catch (err) {
+        console.error("[v0] Playback start error:", err)
+        setError(`Failed to start: ${String(err)}`)
       }
     }
-  }, [player])
+
+    startPlayback()
+  }, [deviceId, track.uri, track.name, player])
 
   useEffect(() => {
-    if (isReady && deviceId && track.id) {
-      console.log("[v0] Ready to play track:", track.name, track.id)
-      shouldBePlaying.current = true
-      playTrack()
+    if (!player || !isPlaying) {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+        progressInterval.current = null
+      }
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.id, isReady, deviceId])
+
+    progressInterval.current = setInterval(async () => {
+      const state = await player.getCurrentState()
+      if (state && !state.paused) {
+        const currentProgress = Math.floor(state.position / 1000)
+        lastProgressRef.current = currentProgress
+        onProgress(currentProgress)
+      }
+    }, 500)
+
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [player, isPlaying, onProgress])
 
   const togglePlayPause = async () => {
     if (!player) return
+
     try {
-      await player.togglePlay()
-      shouldBePlaying.current = !isPlaying
-      console.log("[v0] Toggled playback, shouldBePlaying:", shouldBePlaying.current)
+      const state = await player.getCurrentState()
+      if (!state) {
+        console.error("[v0] No state available")
+        return
+      }
+
+      if (state.paused) {
+        console.log("[v0] Resuming playback")
+        await player.resume()
+      } else {
+        console.log("[v0] Pausing playback")
+        await player.pause()
+      }
     } catch (error) {
       console.error("[v0] Failed to toggle playback:", error)
-      setError("Failed to toggle playback")
+      setError("Playback control failed")
     }
   }
 
@@ -264,81 +266,37 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     setVolume(newVolume)
 
     if (player) {
-      try {
-        await player.setVolume(newVolume / 100)
-        if (newVolume > 0) setIsMuted(false)
-      } catch (error) {
-        console.error("[v0] Failed to set volume:", error)
-      }
+      await player.setVolume(newVolume / 100)
+      if (newVolume > 0) setIsMuted(false)
     }
   }
 
   const toggleMute = async () => {
     if (!player) return
 
-    try {
-      if (isMuted) {
-        await player.setVolume(volume / 100)
-        setIsMuted(false)
-      } else {
-        await player.setVolume(0)
-        setIsMuted(true)
-      }
-    } catch (error) {
-      console.error("[v0] Failed to toggle mute:", error)
+    if (isMuted) {
+      await player.setVolume(volume / 100)
+      setIsMuted(false)
+    } else {
+      await player.setVolume(0)
+      setIsMuted(true)
     }
   }
 
-  const playTrack = async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch("/api/auth/session")
-      const data = await response.json()
-
-      if (!data.accessToken || !deviceId) {
-        setError("Cannot start playback - missing credentials")
-        setIsLoading(false)
-        return
-      }
-
-      const trackUri = track.uri || `spotify:track:${track.id}`
-      console.log("[v0] 🎵 Starting playback for:", track.name, "URI:", trackUri, "Device:", deviceId)
-
-      const playbackResponse = await fetch("/api/playback/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, trackUri }),
-      })
-
-      const playbackData = await playbackResponse.json()
-
-      if (!playbackResponse.ok) {
-        console.error("[v0] ❌ Playback start failed:", playbackData)
-        setError(`Playback failed: ${playbackData.error}`)
-        setIsLoading(false)
-        return
-      }
-
-      console.log("[v0] ✅ Playback API call successful")
-      setIsLoading(false)
-      setError("")
-      
-      setTimeout(async () => {
-        try {
-          const state = await player.getCurrentState()
-          if (state && state.paused) {
-            console.log("[v0] 🔧 Player paused after playback start, forcing resume...")
-            await player.resume()
-          }
-        } catch (err) {
-          console.error("[v0] Error in post-playback resume:", err)
-        }
-      }, 1000) // Changed from 2000ms to 1000ms
-    } catch (error) {
-      console.error("[v0] ❌ Failed to start playback:", error)
-      setError("Failed to start playback")
-      setIsLoading(false)
-    }
+  if (!isPremium) {
+    return (
+      <div className="fixed bottom-6 right-6 bg-destructive/10 border border-destructive rounded-lg shadow-lg p-4 z-50 max-w-[320px]">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-destructive mb-1">Spotify Premium Required</h4>
+            <p className="text-sm text-muted-foreground">
+              Full song playback requires Spotify Premium. Upgrade your account to use this feature.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -353,18 +311,16 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">
-            {!sdkReady ? "Loading Spotify SDK..." : "Initializing player..."}
-          </span>
+          <span className="text-sm">Initializing player...</span>
         </div>
       ) : (
         <div className="flex items-center gap-4">
-          <Button onClick={togglePlayPause} size="icon" variant="default" className="h-10 w-10" disabled={!isReady}>
+          <Button onClick={togglePlayPause} size="icon" variant="default" className="h-10 w-10">
             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </Button>
 
           <div className="flex items-center gap-2 flex-1">
-            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-8 w-8" disabled={!isReady}>
+            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-8 w-8">
               {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </Button>
 
@@ -374,7 +330,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               max={100}
               step={1}
               className="flex-1"
-              disabled={!isReady}
             />
             <span className="text-xs text-muted-foreground w-8 text-right">{isMuted ? 0 : volume}%</span>
           </div>
