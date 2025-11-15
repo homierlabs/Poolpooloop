@@ -17,14 +17,16 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
   useEffect(() => {
     const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
     setBars(newBars)
-  }, [])
+  }, [track.id])
 
   const trackDuration = track.duration || 180
   const progressPercentage = Math.min((songProgress / trackDuration) * 100, 100)
 
   useEffect(() => {
-    console.log(`[v0] 📊 NowPlaying render: progress=${songProgress}s, duration=${trackDuration}s, percentage=${progressPercentage.toFixed(1)}%`)
-  }, [songProgress, trackDuration, progressPercentage])
+    if (songProgress % 10 === 0) {
+      console.log(`[v0] 📊 Progress: ${songProgress}s (${progressPercentage.toFixed(1)}%)`)
+    }
+  }, [songProgress, progressPercentage])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
