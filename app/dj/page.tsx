@@ -213,21 +213,15 @@ export default function DJInterface() {
   }
 
   const handlePlayerProgress = (progress: number) => {
-    console.log("[v0] 📊 DJ page received progress:", progress, "seconds")
     setSongProgress(progress)
 
-    if (!currentTrack) {
-      console.log("[v0] ⚠️ No current track")
-      return
-    }
+    if (!currentTrack) return
 
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    console.log(`[v0] 📊 Voting check: progress=${progress}s, midPoint=${midPoint}s, votingActive=${votingActive}, hasCandidates=${candidates.length > 0}, hasNext=${!!nextTrack}`)
-    
     if (progress >= midPoint && !votingActive && candidates.length > 0 && !nextTrack) {
-      console.log("[v0] ✅ ACTIVATING VOTING NOW!")
+      console.log("[v0] ✅ Activating voting at midpoint:", midPoint, "seconds, current progress:", progress)
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
     }
