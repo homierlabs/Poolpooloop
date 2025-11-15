@@ -213,19 +213,24 @@ export default function DJInterface() {
   }
 
   const handlePlayerProgress = (progress: number) => {
-    setSongProgress(progress)
+    setSongProgress(prev => {
+      console.log(`[v0] 🎵 Progress update: ${prev}s → ${progress}s`)
+      return progress
+    })
 
     if (!currentTrack) return
 
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    console.log(`[v0] 🎵 Progress: ${progress}s / ${trackDuration}s (midpoint: ${midPoint}s), voting active: ${votingActive}, has candidates: ${candidates.length > 0}, has next track: ${!!nextTrack}`)
+    console.log(`[v0] 🎯 Conditions - votingActive: ${votingActive}, candidates: ${candidates.length}, nextTrack: ${!!nextTrack}`)
     
-    if (progress >= midPoint && !votingActive && candidates.length > 0 && !nextTrack) {
-      console.log("[v0] ✅✅✅ ACTIVATING VOTING at midpoint:", midPoint, "seconds, current progress:", progress)
+    if (progress >= midPoint && !votingActive && candidates.length >= 4 && !nextTrack) {
+      console.log("[v0] ✅✅✅ ACTIVATING VOTING NOW!")
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
+      setVotes([0, 0, 0, 0])
+      setVotedIndex(null)
     }
   }
 
@@ -285,6 +290,7 @@ export default function DJInterface() {
         </div>
 
         <NowPlaying
+          key={`${currentTrack.id}-${songProgress}`}
           track={currentTrack}
           timeRemaining={timeRemaining}
           nextTrack={nextTrack}

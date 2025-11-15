@@ -20,7 +20,11 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
   }, [])
 
   const trackDuration = track.duration || 180
-  const progressPercentage = (songProgress / trackDuration) * 100
+  const progressPercentage = Math.min((songProgress / trackDuration) * 100, 100)
+
+  useEffect(() => {
+    console.log(`[v0] 📊 NowPlaying render: progress=${songProgress}s, duration=${trackDuration}s, percentage=${progressPercentage.toFixed(1)}%`)
+  }, [songProgress, trackDuration, progressPercentage])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
