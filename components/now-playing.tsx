@@ -16,6 +16,7 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
   const [localProgress, setLocalProgress] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
+  const timerStartedRef = useRef(false)
 
   useEffect(() => {
     const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
@@ -24,26 +25,32 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
 
   useEffect(() => {
     if (songProgress === -1) {
-      // Special signal to reset timer
-      console.log("[v0] NowPlaying: Received reset signal, restarting timer")
+      console.log("[v0] NowPlaying: Reset signal received")
+      // Clear any existing interval
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
       setLocalProgress(0)
-      startTimeRef.current = Date.now()
+      timerStartedRef.current = false
       return
     }
     
-    if (songProgress === 0 && !intervalRef.current) {
+    if (songProgress === 0 && !timerStartedRef.current) {
       console.log("[v0] NowPlaying: Starting independent progress timer synced with audio")
+      
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
       
       setLocalProgress(0)
       startTimeRef.current = Date.now()
+      timerStartedRef.current = true
 
       // Update progress every second
       intervalRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-        console.log("[v0] NowPlaying: Progress tick:", elapsed, "seconds")
         setLocalProgress(elapsed)
       }, 1000)
     }
@@ -54,21 +61,20 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
         intervalRef.current = null
       }
     }
-  }, [songProgress]) // React to songProgress changes to sync
+  }, [songProgress])
 
   useEffect(() => {
-    console.log("[v0] NowPlaying: Track changed, clearing timer")
+    console.log("[v0] NowPlaying: Track changed, resetting timer state")
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
     setLocalProgress(0)
+    timerStartedRef.current = false
   }, [track.id])
 
   const trackDuration = track.duration || 180
   const progressPercentage = Math.min((localProgress / trackDuration) * 100, 100)
-
-  console.log("[v0] NowPlaying render: localProgress =", localProgress, "duration =", trackDuration, "percentage =", progressPercentage.toFixed(1) + "%")
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
