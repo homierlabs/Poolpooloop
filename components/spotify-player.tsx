@@ -159,8 +159,8 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       console.log("[v0] Cleanup...")
       if (progressInterval.current) clearInterval(progressInterval.current)
       if (watchdogInterval.current) clearInterval(watchdogInterval.current)
-      if (spotifyPlayer) {
-        spotifyPlayer.disconnect()
+      if (player) {
+        player.disconnect()
       }
     }
   }, [volume, onProgress, onTrackEnd])
@@ -206,6 +206,25 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
         console.log("[v0] ✅ PLAYBACK API SUCCESS - track should be playing")
         
+        await new Promise(resolve => setTimeout(resolve, 500))
+        console.log("[v0] 🔥 FORCING IMMEDIATE RESUME")
+        await player.resume()
+        
+        setTimeout(async () => {
+          console.log("[v0] 🔥 FORCING RESUME AT 1s")
+          await player.resume()
+        }, 1000)
+        
+        setTimeout(async () => {
+          console.log("[v0] 🔥 FORCING RESUME AT 2s")
+          await player.resume()
+        }, 2000)
+        
+        setTimeout(async () => {
+          console.log("[v0] 🔥 FORCING RESUME AT 3s")
+          await player.resume()
+        }, 3000)
+        
         progressInterval.current = setInterval(async () => {
           const state = await player.getCurrentState()
           if (!state) return
@@ -228,24 +247,16 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           const pos = Math.floor(state.position / 1000)
           const paused = state.paused
 
-          // Check if stuck at same position
-          if (pos === lastProgressRef.current) {
-            stuckCount.current++
-          } else {
-            stuckCount.current = 0
-          }
-
-          // If we should be playing but we're paused OR stuck, force resume
-          if (shouldBePlaying.current && (paused || stuckCount.current > 2)) {
-            console.log(`[v0] 🔥 WATCHDOG FORCING RESUME - paused: ${paused}, stuck: ${stuckCount.current}`)
+          // If paused at all, immediately resume
+          if (shouldBePlaying.current && paused) {
+            console.log(`[v0] 🔥 WATCHDOG FORCING RESUME - position: ${pos}`)
             try {
               await player.resume()
-              console.log("[v0] ✅ Resume called")
             } catch (err) {
               console.error("[v0] ❌ Resume failed:", err)
             }
           }
-        }, 500)
+        }, 300)
 
       } catch (err) {
         console.error("[v0] ❌ PLAYBACK ERROR:", err)
