@@ -208,37 +208,49 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               if (progressInterval.current) clearInterval(progressInterval.current)
               
               progressInterval.current = setInterval(async () => {
-                if (!spotifyPlayer) return
-                
-                const state = await spotifyPlayer.getCurrentState()
-                
-                console.log("[v0] 📊 Progress poll - state:", state ? {
-                  position: state.position,
-                  duration: state.duration,
-                  paused: state.paused,
-                  positionSeconds: Math.floor(state.position / 1000)
-                } : 'null')
-                
-                if (!state) return
-
-                const pos = Math.floor(state.position / 1000)
-                
-                console.log("[v0] 🕐 Calling onProgress with:", pos)
-                lastProgressRef.current = pos
-                onProgress(pos)
-
-                // Safe track end detection that avoids false 0:00 triggers
-                if (
-                  state.paused &&
-                  state.position === 0 &&
-                  lastProgressRef.current > 3 && // ensure at least 3s played
-                  state.duration > 0 &&
-                  state.track_window.previous_tracks.length > 0 // track actually completed
-                ) {
-                  console.log("[v0] 🎵 TRACK ENDED (safe detected)")
-                  onTrackEnd()
+                if (!spotifyPlayer) {
+                  console.log("[v0] ⚠️ Progress interval: player is null")
+                  return
                 }
 
+                try {
+                  const state = await spotifyPlayer.getCurrentState()
+                  
+                  if (!state) {
+                    console.log("[v0] ⚠️ Progress interval: state is null - SDK not ready or track not loaded")
+                    return
+                  }
+
+                  if (!state.track_window || !state.track_window.current_track) {
+                    console.log("[v0] ⚠️ Progress interval: no current track in state")
+                    return
+                  }
+
+                  const posMs = state.position
+                  const pos = Math.floor(posMs / 1000)
+                  const durMs = state.duration
+                  const dur = Math.floor(durMs / 1000)
+                  
+                  console.log(`[v0] 🕐 PROGRESS UPDATE: ${pos}s / ${dur}s (${Math.round((pos/dur)*100)}%) | paused: ${state.paused} | track: ${state.track_window.current_track.name}`)
+                  
+                  lastProgressRef.current = pos
+                  onProgress(pos)
+
+                  // Safe track end detection
+                  if (
+                    state.paused &&
+                    state.position === 0 &&
+                    lastProgressRef.current > 3 &&
+                    state.duration > 0 &&
+                    state.track_window.previous_tracks.length > 0
+                  ) {
+                    console.log("[v0] 🎵 TRACK ENDED (detected safely)")
+                    if (progressInterval.current) clearInterval(progressInterval.current)
+                    onTrackEnd()
+                  }
+                } catch (error) {
+                  console.error("[v0] ❌ Error getting player state:", error)
+                }
               }, 500)
             } else {
               console.error("[v0] ❌ Play failed with status:", play.status)
