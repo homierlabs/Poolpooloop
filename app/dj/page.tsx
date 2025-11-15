@@ -220,12 +220,12 @@ export default function DJInterface() {
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    if (progress % 5 === 0 || progress === midPoint) {
-      console.log(`[v0] 🎯 Progress: ${progress}s/${trackDuration}s (${((progress/trackDuration)*100).toFixed(1)}%) - votingActive: ${votingActive}, candidates: ${candidates.length}, nextTrack: ${!!nextTrack}`)
-    }
+    console.log(`[v0] 🎯 Progress: ${progress}s/${trackDuration}s (${((progress/trackDuration)*100).toFixed(1)}%)`)
+    console.log(`[v0] 📊 Midpoint: ${midPoint}s, VotingActive: ${votingActive}, Candidates: ${candidates.length}, NextTrack: ${!!nextTrack}`)
     
-    if (progress >= midPoint && !votingActive && candidates.length >= 4 && !nextTrack) {
-      console.log("[v0] ✅ ACTIVATING VOTING at", progress, "seconds (midpoint:", midPoint, ")")
+    // Check if we're at or past midpoint (with 1 second tolerance)
+    if (progress >= (midPoint - 1) && !votingActive && candidates.length >= 4 && !nextTrack) {
+      console.log("[v0] ✅✅✅ ACTIVATING VOTING NOW at", progress, "seconds (midpoint:", midPoint, ")")
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
       setVotes([0, 0, 0, 0])
