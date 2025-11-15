@@ -25,7 +25,10 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const [readyToPlay, setReadyToPlay] = useState(false)
   const lastProgressRef = useRef<number>(0)
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
+  const watchdogInterval = useRef<NodeJS.Timeout | null>(null)
   const hasStartedPlayback = useRef(false)
+  const shouldBePlaying = useRef(false)
+  const stuckCount = useRef(0)
 
   useEffect(() => {
     let spotifyPlayer: Spotify.Player | null = null
@@ -45,7 +48,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         const token = sessionData.accessToken
         console.log("[v0] Token obtained")
 
-        // Wait for SDK
         console.log("[v0] Waiting for Spotify SDK...")
         let sdkReadyAttempts = 0
         while (!window.Spotify && sdkReadyAttempts < 40) {
@@ -120,12 +122,13 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           if (pos !== lastProgressRef.current) {
             lastProgressRef.current = pos
             onProgress(pos)
+            stuckCount.current = 0
           }
 
-          // Detect track end
           if (state.position === 0 && paused && lastProgressRef.current > 5) {
             console.log("[v0] 🎵 TRACK ENDED")
             hasStartedPlayback.current = false
+            shouldBePlaying.current = false
             onTrackEnd()
           }
         })
@@ -155,6 +158,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     return () => {
       console.log("[v0] Cleanup...")
       if (progressInterval.current) clearInterval(progressInterval.current)
+      if (watchdogInterval.current) clearInterval(watchdogInterval.current)
       if (spotifyPlayer) {
         spotifyPlayer.disconnect()
       }
@@ -173,12 +177,12 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         
         setError("")
         hasStartedPlayback.current = true
+        shouldBePlaying.current = true
 
         const sessionRes = await fetch("/api/auth/session")
         const sessionData = await sessionRes.json()
         const token = sessionData.accessToken
 
-        // Use Web API to start playback on our device
         const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
           method: "PUT",
           headers: {
@@ -196,12 +200,12 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           console.error("[v0] ❌ PLAYBACK API FAILED:", response.status, errorData)
           setError(`Failed to start: ${response.status}`)
           hasStartedPlayback.current = false
+          shouldBePlaying.current = false
           return
         }
 
         console.log("[v0] ✅ PLAYBACK API SUCCESS - track should be playing")
         
-        // Start progress polling
         progressInterval.current = setInterval(async () => {
           const state = await player.getCurrentState()
           if (!state) return
@@ -214,10 +218,40 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           }
         }, 1000)
 
+        watchdogInterval.current = setInterval(async () => {
+          const state = await player.getCurrentState()
+          if (!state) {
+            console.log("[v0] 🔴 WATCHDOG: No state")
+            return
+          }
+
+          const pos = Math.floor(state.position / 1000)
+          const paused = state.paused
+
+          // Check if stuck at same position
+          if (pos === lastProgressRef.current) {
+            stuckCount.current++
+          } else {
+            stuckCount.current = 0
+          }
+
+          // If we should be playing but we're paused OR stuck, force resume
+          if (shouldBePlaying.current && (paused || stuckCount.current > 2)) {
+            console.log(`[v0] 🔥 WATCHDOG FORCING RESUME - paused: ${paused}, stuck: ${stuckCount.current}`)
+            try {
+              await player.resume()
+              console.log("[v0] ✅ Resume called")
+            } catch (err) {
+              console.error("[v0] ❌ Resume failed:", err)
+            }
+          }
+        }, 500)
+
       } catch (err) {
         console.error("[v0] ❌ PLAYBACK ERROR:", err)
         setError(`Playback failed: ${String(err)}`)
         hasStartedPlayback.current = false
+        shouldBePlaying.current = false
       }
     }
 
@@ -233,8 +267,18 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     if (!player) return
 
     try {
-      await player.togglePlay()
-      console.log("[v0] Toggled play/pause")
+      const state = await player.getCurrentState()
+      if (!state) return
+
+      if (state.paused) {
+        shouldBePlaying.current = true
+        await player.resume()
+        console.log("[v0] User resumed")
+      } else {
+        shouldBePlaying.current = false
+        await player.pause()
+        console.log("[v0] User paused")
+      }
     } catch (error) {
       console.error("[v0] Toggle error:", error)
     }
