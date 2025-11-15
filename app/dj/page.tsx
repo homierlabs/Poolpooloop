@@ -1,19 +1,14 @@
-// FILE: app/dj/page.tsx
-// PURPOSE: Main DJ interface with voting and playback control
-// USAGE: Main page after song selection - handles entire DJ flow
-// REPLACE THE EXISTING FILE COMPLETELY
-
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from 'next/navigation'
 import { NowPlaying } from "@/components/now-playing"
 import { VotingGrid } from "@/components/voting-grid"
 import { NextUpBanner } from "@/components/next-up-banner"
 import { SpotifyPlayer } from "@/components/spotify-player"
 import { Button } from "@/components/ui/button"
 import type { Track } from "@/lib/types"
-import { LogOut } from "lucide-react"
+import { LogOut } from 'lucide-react'
 
 const VOTING_DURATION = 15 // seconds
 const TRACK_DURATION_FALLBACK = 180 // 3 minutes if duration unknown
@@ -225,9 +220,8 @@ export default function DJInterface() {
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    // Activate voting at midpoint
-    if (progress >= midPoint && !votingActive && candidates.length > 0) {
-      console.log("[v0] Activating voting at midpoint:", midPoint, "seconds, current progress:", progress)
+    if (progress >= midPoint && !votingActive && candidates.length > 0 && !nextTrack) {
+      console.log("[v0] ✅ Activating voting at midpoint:", midPoint, "seconds, current progress:", progress)
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
     }

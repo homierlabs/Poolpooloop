@@ -1,8 +1,3 @@
-// FILE: components/now-playing.tsx
-// PURPOSE: Display current and next track with progress visualization
-// USAGE: Used in app/dj/page.tsx to show playback state
-// REPLACE THE EXISTING FILE COMPLETELY
-
 "use client"
 
 import type { Track } from "@/lib/types"
@@ -24,8 +19,14 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
     setBars(newBars)
   }, [])
 
-  const trackDuration = track.duration || 180 // Fallback to 3 minutes
+  const trackDuration = track.duration || 180
   const progressPercentage = (songProgress / trackDuration) * 100
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="mb-6 sm:mb-8 animate-slide-up">
@@ -107,14 +108,14 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
           })}
 
           <div
-            className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 transition-all duration-1000 ease-linear"
+            className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 transition-all duration-500 ease-linear"
             style={{ left: `${Math.min(progressPercentage, 100)}%` }}
           />
         </div>
 
         <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-          <span>{Math.floor(songProgress / 60)}:{(songProgress % 60).toString().padStart(2, '0')}</span>
-          <span>{Math.floor(trackDuration / 60)}:{(trackDuration % 60).toString().padStart(2, '0')}</span>
+          <span>{formatTime(songProgress)}</span>
+          <span>{formatTime(trackDuration)}</span>
         </div>
       </div>
     </div>
