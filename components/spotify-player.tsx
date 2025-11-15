@@ -24,7 +24,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const [userHasInteracted, setUserHasInteracted] = useState(false)
   const [readyToPlay, setReadyToPlay] = useState(false)
   const lastProgressRef = useRef<number>(0)
-  const watchdogInterval = useRef<NodeJS.Timeout | null>(null)
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
   const hasStartedPlayback = useRef(false)
 
   useEffect(() => {
@@ -43,9 +43,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         }
 
         const token = sessionData.accessToken
-        console.log("[v0] Token obtained, length:", token.length)
+        console.log("[v0] Token obtained")
 
-        // Wait for SDK with longer timeout
+        // Wait for SDK
         console.log("[v0] Waiting for Spotify SDK...")
         let sdkReadyAttempts = 0
         while (!window.Spotify && sdkReadyAttempts < 40) {
@@ -54,25 +54,24 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         }
 
         if (!window.Spotify) {
-          console.error("[v0] SDK FAILED TO LOAD after 20 seconds")
+          console.error("[v0] SDK FAILED TO LOAD")
           setError("Spotify SDK failed to load")
           setIsLoading(false)
           return
         }
 
-        console.log("[v0] ✅ SDK loaded successfully")
+        console.log("[v0] ✅ SDK loaded")
 
         spotifyPlayer = new window.Spotify.Player({
           name: "DJ Interface Web Player",
           getOAuthToken: (cb) => {
-            console.log("[v0] Providing token to SDK")
             cb(token)
           },
           volume: volume / 100,
         })
 
         spotifyPlayer.addListener("initialization_error", ({ message }) => {
-          console.error("[v0] ❌ INITIALIZATION ERROR:", message)
+          console.error("[v0] ❌ INIT ERROR:", message)
           setError(`Init error: ${message}`)
           setIsLoading(false)
         })
@@ -92,6 +91,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
         spotifyPlayer.addListener("playback_error", ({ message }) => {
           console.error("[v0] ❌ PLAYBACK ERROR:", message)
+          setError(`Playback error: ${message}`)
         })
 
         spotifyPlayer.addListener("ready", ({ device_id }) => {
@@ -107,10 +107,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         })
 
         spotifyPlayer.addListener("player_state_changed", (state) => {
-          if (!state) {
-            console.log("[v0] State=null")
-            return
-          }
+          if (!state) return
 
           const pos = Math.floor(state.position / 1000)
           const dur = Math.floor(state.duration / 1000)
@@ -157,9 +154,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
     return () => {
       console.log("[v0] Cleanup...")
-      if (watchdogInterval.current) clearInterval(watchdogInterval.current)
-      if (player) {
-        player.disconnect()
+      if (progressInterval.current) clearInterval(progressInterval.current)
+      if (spotifyPlayer) {
+        spotifyPlayer.disconnect()
       }
     }
   }, [volume, onProgress, onTrackEnd])
@@ -170,71 +167,52 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
     const startPlayback = async () => {
       try {
-        console.log("[v0] ====== PLAYBACK START ======")
-        console.log("[v0] Track:", track.name)
-        console.log("[v0] URI:", track.uri)
-        console.log("[v0] Device:", deviceId)
+        console.log("[v0] ====== STARTING PLAYBACK VIA WEB API ======")
+        console.log("[v0] Track URI:", track.uri)
+        console.log("[v0] Device ID:", deviceId)
         
         setError("")
         hasStartedPlayback.current = true
 
-        // Transfer device
-        console.log("[v0] Transferring to device...")
-        const token = (await fetch("/api/auth/session").then(r => r.json())).accessToken
-        
-        await fetch("https://api.spotify.com/v1/me/player", {
+        const sessionRes = await fetch("/api/auth/session")
+        const sessionData = await sessionRes.json()
+        const token = sessionData.accessToken
+
+        // Use Web API to start playback on our device
+        const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            device_ids: [deviceId],
-            play: false,
+            uris: [track.uri],
+            position_ms: 0,
           }),
         })
-
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        // Start playback
-        console.log("[v0] Starting track...")
-        const response = await fetch("/api/playback/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceId,
-            trackUri: track.uri,
-          }),
-        })
-
-        const data = await response.json()
 
         if (!response.ok) {
-          console.error("[v0] ❌ Playback API FAILED:", data)
-          setError(data.error || "Failed to start playback")
+          const errorData = await response.json().catch(() => ({}))
+          console.error("[v0] ❌ PLAYBACK API FAILED:", response.status, errorData)
+          setError(`Failed to start: ${response.status}`)
+          hasStartedPlayback.current = false
           return
         }
 
-        console.log("[v0] ✅ Playback API SUCCESS")
-        hasStartedPlayback.current = true
+        console.log("[v0] ✅ PLAYBACK API SUCCESS - track should be playing")
         
-        // Start watchdog
-        watchdogInterval.current = setInterval(async () => {
+        // Start progress polling
+        progressInterval.current = setInterval(async () => {
           const state = await player.getCurrentState()
           if (!state) return
 
           const pos = Math.floor(state.position / 1000)
           
-          if (state.paused && pos < (track.duration || 180) - 5) {
-            console.log(`[v0] 🚨 WATCHDOG RESUME at ${pos}s`)
-            await player.resume()
-          }
-
           if (pos !== lastProgressRef.current) {
             lastProgressRef.current = pos
             onProgress(pos)
           }
-        }, 500)
+        }, 1000)
 
       } catch (err) {
         console.error("[v0] ❌ PLAYBACK ERROR:", err)
@@ -244,7 +222,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     }
 
     startPlayback()
-  }, [deviceId, track.uri, track.name, track.duration, player, userHasInteracted, onProgress])
+  }, [deviceId, track.uri, player, userHasInteracted, onProgress])
 
   const handleUserPlay = async () => {
     console.log("[v0] 🎯 USER CLICKED PLAY")
@@ -255,16 +233,8 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     if (!player) return
 
     try {
-      const state = await player.getCurrentState()
-      if (!state) return
-
-      if (state.paused) {
-        console.log("[v0] User RESUME")
-        await player.resume()
-      } else {
-        console.log("[v0] User PAUSE")
-        await player.pause()
-      }
+      await player.togglePlay()
+      console.log("[v0] Toggled play/pause")
     } catch (error) {
       console.error("[v0] Toggle error:", error)
     }
