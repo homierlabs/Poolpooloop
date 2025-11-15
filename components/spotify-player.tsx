@@ -40,7 +40,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     
     console.log(`[v0] ⏱️ Starting timer for ${trackDurationRef.current}s track`)
     
-    // Update immediately
+    onProgress(-1) // Special value to signal "reset and start"
+    
+    // Update immediately with 0
     onProgress(0)
     
     // Then update every second

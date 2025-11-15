@@ -23,30 +23,47 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
   }, [track.id])
 
   useEffect(() => {
-    console.log("[v0] NowPlaying: Starting independent progress timer")
-    
-    // Clear any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
+    if (songProgress === -1) {
+      // Special signal to reset timer
+      console.log("[v0] NowPlaying: Received reset signal, restarting timer")
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+      setLocalProgress(0)
+      startTimeRef.current = Date.now()
+      return
     }
+    
+    if (songProgress === 0 && !intervalRef.current) {
+      console.log("[v0] NowPlaying: Starting independent progress timer synced with audio")
+      
+      setLocalProgress(0)
+      startTimeRef.current = Date.now()
 
-    // Reset progress to 0 for new track
-    setLocalProgress(0)
-    startTimeRef.current = Date.now()
-
-    // Update progress every second
-    intervalRef.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-      console.log("[v0] NowPlaying: Progress tick:", elapsed, "seconds")
-      setLocalProgress(elapsed)
-    }, 1000)
+      // Update progress every second
+      intervalRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
+        console.log("[v0] NowPlaying: Progress tick:", elapsed, "seconds")
+        setLocalProgress(elapsed)
+      }, 1000)
+    }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
-  }, [track.id]) // Only reset when track changes
+  }, [songProgress]) // React to songProgress changes to sync
+
+  useEffect(() => {
+    console.log("[v0] NowPlaying: Track changed, clearing timer")
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    setLocalProgress(0)
+  }, [track.id])
 
   const trackDuration = track.duration || 180
   const progressPercentage = Math.min((localProgress / trackDuration) * 100, 100)

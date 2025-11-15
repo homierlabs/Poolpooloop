@@ -214,8 +214,14 @@ export default function DJInterface() {
 
   const handlePlayerProgress = (progress: number) => {
     console.log(`[v0] 🎯 RECEIVED PROGRESS: ${progress}s`)
+    
     setSongProgress(progress)
     console.log(`[v0] 🎯 SET STATE TO: ${progress}s`)
+
+    if (progress === -1 || progress === 0) {
+      console.log("[v0] Skipping voting check during initialization")
+      return
+    }
 
     if (!currentTrack) {
       console.log("[v0] ❌ No current track")
