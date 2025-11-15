@@ -27,8 +27,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
   const trackDurationRef = useRef<number>(0)
-  const isTimerRunningRef = useRef(false)
-  // </CHANGE>
+  const currentProgressRef = useRef<number>(0)
 
   const startProgressTimer = (durationMs: number) => {
     if (progressTimerRef.current) {
@@ -37,21 +36,25 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     
     startTimeRef.current = Date.now()
     trackDurationRef.current = Math.floor(durationMs / 1000)
-    isTimerRunningRef.current = true
+    currentProgressRef.current = 0
     
-    console.log(`[v0] ⏱️ Starting independent timer for ${trackDurationRef.current}s`)
+    console.log(`[v0] ⏱️ Starting timer for ${trackDurationRef.current}s track`)
     
+    // Update immediately
+    onProgress(0)
+    
+    // Then update every second
     progressTimerRef.current = setInterval(() => {
-      if (!isTimerRunningRef.current) return
-      
       const elapsed = Date.now() - startTimeRef.current
       const currentSec = Math.floor(elapsed / 1000)
+      currentProgressRef.current = currentSec
       
+      console.log(`[v0] ⏲️ Timer tick: ${currentSec}s / ${trackDurationRef.current}s`)
       onProgress(currentSec)
       
       // Check for track end
-      if (currentSec >= trackDurationRef.current - 1) {
-        console.log("[v0] 🎵 Track ended (timer)")
+      if (currentSec >= trackDurationRef.current) {
+        console.log("[v0] 🎵 Track ended by timer")
         stopProgressTimer()
         onTrackEnd()
       }
@@ -59,13 +62,12 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   }
 
   const stopProgressTimer = () => {
-    isTimerRunningRef.current = false
+    console.log("[v0] 🛑 Stopping progress timer")
     if (progressTimerRef.current) {
       clearInterval(progressTimerRef.current)
       progressTimerRef.current = null
     }
   }
-  // </CHANGE>
 
   useEffect(() => {
     let spotifyPlayer: Spotify.Player | null = null
@@ -242,7 +244,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               
               const durationMs = track.duration ? track.duration * 1000 : 180000
               startProgressTimer(durationMs)
-              // </CHANGE>
             } else {
               console.error("[v0] ❌ Play failed with status:", play.status)
               setError(`Failed to start playback: ${play.status}`)
@@ -262,7 +263,6 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           setIsPlaying(!state.paused)
           console.log(`[v0] STATE: ${state.paused ? '⏸️ PAUSED' : '▶️ PLAYING'}`)
         })
-        // </CHANGE>
 
         console.log("[v0] Connecting player to Spotify...")
         const connected = await spotifyPlayer.connect()
