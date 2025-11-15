@@ -155,10 +155,36 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
             console.log("Transfer status:", transfer.status)
 
-            // 3. Wait a bit more so Spotify updates active device
+            // 3. Poll devices list to confirm Spotify has activated this device
+            let deviceConfirmed = false
+            for (let i = 0; i < 6; i++) {
+              const devicesResp = await fetch("https://api.spotify.com/v1/me/player/devices", {
+                headers: { Authorization: `Bearer ${token}` }
+              })
+
+              const devicesJson = await devicesResp.json()
+              console.log(`[v0] Devices poll ${i + 1}:`, devicesJson)
+
+              if (Array.isArray(devicesJson.devices)) {
+                const found = devicesJson.devices.find((d: any) => d.id === device_id)
+                if (found) {
+                  console.log("[v0] ✅ Device confirmed active:", found)
+                  deviceConfirmed = true
+                  break
+                }
+              }
+
+              await new Promise((res) => setTimeout(res, 400))
+            }
+
+            if (!deviceConfirmed) {
+              console.warn("[v0] ⚠️ Device did NOT show up in devices list — playback may fail")
+            }
+
+            // 4. Let Spotify settle the active device internally
             await new Promise((res) => setTimeout(res, 500))
 
-            // 4. Finally start the song
+            // 5. Start the song
             const play = await fetch(
               `https://api.spotify.com/v1/me/player/play?device_id=${device_id}`,
               {
