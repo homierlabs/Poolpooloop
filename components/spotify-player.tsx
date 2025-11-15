@@ -221,11 +221,18 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
                   onProgress(pos)
                 }
 
-                // Track ended detection
-                if (state.position === 0 && state.paused && lastProgressRef.current > 5) {
-                  console.log("[v0] 🎵 TRACK ENDED")
+                // Safe track end detection that avoids false 0:00 triggers
+                if (
+                  state.paused &&
+                  state.position === 0 &&
+                  lastProgressRef.current > 3 && // ensure at least 3s played
+                  state.duration > 0 &&
+                  state.track_window.previous_tracks.length > 0 // track actually completed
+                ) {
+                  console.log("[v0] 🎵 TRACK ENDED (safe detected)")
                   onTrackEnd()
                 }
+
               }, 500)
             } else {
               console.error("[v0] ❌ Play failed with status:", play.status)
