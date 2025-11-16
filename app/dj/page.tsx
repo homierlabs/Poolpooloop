@@ -236,10 +236,13 @@ export default function DJInterface() {
       setVotingActive(false)
       setVotedIndex(null)
       setVotes([0, 0, 0, 0])
+      setTimeRemaining(VOTING_DURATION)
+      
+      const nextTrackCopy = nextTrack
       setNextTrack(null)
-      fetchSimilarTracks(nextTrack)
+      fetchSimilarTracks(nextTrackCopy)
     } else {
-      console.log("[v0] No next track, staying on current")
+      console.log("[v0] No next track selected, track will loop or stop")
     }
   }
 

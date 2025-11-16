@@ -25,6 +25,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const initRef = useRef(false)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartTimeRef = useRef<number>(0)
+  const accessTokenRef = useRef<string>("")
 
   const startProgressTracking = () => {
     if (progressIntervalRef.current) {
@@ -41,6 +42,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       // Check if track has ended
       const trackDuration = track.duration || 180
       if (elapsed >= trackDuration) {
+        console.log("[v0] Track ended, calling onTrackEnd")
         clearInterval(progressIntervalRef.current!)
         progressIntervalRef.current = null
         onTrackEnd()
@@ -55,12 +57,60 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
     }
   }
 
+  const playTrack = async (trackUri: string) => {
+    if (!deviceId || !accessTokenRef.current) {
+      console.error("[v0] Cannot play track - no device or token")
+      return
+    }
+
+    try {
+      console.log("[v0] Playing new track:", trackUri)
+      setIsLoading(true)
+      
+      const playRes = await fetch(
+        `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessTokenRef.current}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uris: [trackUri],
+          }),
+        }
+      )
+
+      if (playRes.ok || playRes.status === 204) {
+        await new Promise(res => setTimeout(res, 500))
+        
+        startProgressTracking()
+        setIsPlaying(true)
+        setIsLoading(false)
+        console.log("[v0] New track playing successfully")
+      } else {
+        setError(`Play failed: ${playRes.status}`)
+        setIsLoading(false)
+      }
+    } catch (err) {
+      setError(`Failed to play track: ${String(err)}`)
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (initRef.current && deviceId && track.uri) {
+      console.log("[v0] Track changed, playing new track:", track.name)
+      stopProgressTracking()
+      playTrack(track.uri)
+    }
+  }, [track.uri])
+
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
 
     let spotifyPlayer: Spotify.Player | null = null
-    let accessToken = ""
 
     const initialize = async () => {
       try {
@@ -77,7 +127,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           return
         }
 
-        accessToken = sessionData.accessToken
+        accessTokenRef.current = sessionData.accessToken
 
         // Step 2: Wait for Spotify SDK
         if (!window.Spotify) {
@@ -103,7 +153,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         // Step 3: Create player
         spotifyPlayer = new window.Spotify.Player({
           name: "DJ Interface Web Player",
-          getOAuthToken: (cb) => cb(accessToken),
+          getOAuthToken: (cb) => cb(accessTokenRef.current),
           volume: volume / 100,
         })
 
@@ -130,6 +180,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
         // Step 5: Handle player ready
         spotifyPlayer.addListener("ready", async ({ device_id }) => {
+          console.log("[v0] Player ready with device ID:", device_id)
           setDeviceId(device_id)
           setPlayer(spotifyPlayer)
           setError("")
@@ -139,7 +190,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
             await fetch("https://api.spotify.com/v1/me/player", {
               method: "PUT",
               headers: {
-                Authorization: `Bearer ${accessToken}`,
+                Authorization: `Bearer ${accessTokenRef.current}`,
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
@@ -151,32 +202,8 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
             // Wait for transfer to complete
             await new Promise(res => setTimeout(res, 800))
 
-            // Start playback
-            const playRes = await fetch(
-              `https://api.spotify.com/v1/me/player/play?device_id=${device_id}`,
-              {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  uris: [track.uri],
-                }),
-              }
-            )
+            await playTrack(track.uri)
 
-            if (playRes.ok || playRes.status === 204) {
-              // Wait a moment for playback to actually start
-              await new Promise(res => setTimeout(res, 500))
-              
-              startProgressTracking()
-              setIsPlaying(true)
-              setIsLoading(false)
-            } else {
-              setError(`Play failed: ${playRes.status}`)
-              setIsLoading(false)
-            }
           } catch (err) {
             setError(`Playback setup failed: ${String(err)}`)
             setIsLoading(false)
@@ -221,7 +248,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         spotifyPlayer.disconnect()
       }
     }
-  }, [track.uri])
+  }, [])
 
   const togglePlayPause = async () => {
     if (!player) return
