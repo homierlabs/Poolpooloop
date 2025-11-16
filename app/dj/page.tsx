@@ -213,37 +213,19 @@ export default function DJInterface() {
   }
 
   const handlePlayerProgress = (progress: number) => {
-    console.log(`[v0] 🎯 RECEIVED PROGRESS: ${progress}s`)
-    
     setSongProgress(progress)
-    console.log(`[v0] 🎯 SET STATE TO: ${progress}s`)
 
-    // Skip voting logic during initialization
-    if (progress <= 0) {
-      console.log("[v0] Skipping voting check during initialization")
-      return
-    }
-
-    if (!currentTrack) {
-      console.log("[v0] ❌ No current track")
-      return
-    }
+    if (!currentTrack || progress <= 0) return
 
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    console.log(`[v0] 📊 Progress: ${progress}s, Duration: ${trackDuration}s, Midpoint: ${midPoint}s`)
-    console.log(`[v0] 📊 VotingActive: ${votingActive}, Candidates: ${candidates.length}, NextTrack: ${!!nextTrack}`)
-    console.log(`[v0] 📊 Check: progress(${progress}) >= midpoint-1(${midPoint-1})? ${progress >= (midPoint - 1)}`)
-    
-    if (progress >= (midPoint - 1) && !votingActive && candidates.length >= 4 && !nextTrack) {
-      console.log("[v0] ✅✅✅ ACTIVATING VOTING NOW!!!")
+    if (progress >= midPoint && !votingActive && candidates.length >= 4 && !nextTrack) {
+      console.log("[v0] ✅ ACTIVATING VOTING AT", progress, "seconds")
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
       setVotes([0, 0, 0, 0])
       setVotedIndex(null)
-    } else if (progress >= (midPoint - 1)) {
-      console.log(`[v0] ⚠️ Midpoint reached but NOT activating: votingActive=${votingActive}, candidates=${candidates.length}, nextTrack=${!!nextTrack}`)
     }
   }
 

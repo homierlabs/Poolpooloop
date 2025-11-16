@@ -24,47 +24,40 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   const playerInitialized = useRef(false)
   const playbackStarted = useRef(false)
   
-  const progressTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number>(0)
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const trackStartTimeRef = useRef<number>(0)
   const trackDurationRef = useRef<number>(0)
-  const currentProgressRef = useRef<number>(0)
 
-  const startProgressTimer = (durationMs: number) => {
-    if (progressTimerRef.current) {
-      clearInterval(progressTimerRef.current)
+  const startProgressTracking = (durationMs: number) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
     }
     
-    startTimeRef.current = Date.now()
+    trackStartTimeRef.current = Date.now()
     trackDurationRef.current = Math.floor(durationMs / 1000)
-    currentProgressRef.current = 0
     
-    console.log(`[v0] ⏱️ Starting timer for ${trackDurationRef.current}s track`)
+    console.log(`[v0] ⏱️ Starting progress tracking for ${trackDurationRef.current}s track`)
     
     onProgress(0)
     
-    // Then update every second
-    progressTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current
-      const currentSec = Math.floor(elapsed / 1000)
-      currentProgressRef.current = currentSec
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - trackStartTimeRef.current) / 1000)
       
-      console.log(`[v0] ⏲️ Timer tick: ${currentSec}s / ${trackDurationRef.current}s`)
-      onProgress(currentSec)
+      console.log(`[v0] 📍 Progress: ${elapsed}s / ${trackDurationRef.current}s`)
+      onProgress(elapsed)
       
-      // Check for track end
-      if (currentSec >= trackDurationRef.current) {
-        console.log("[v0] 🎵 Track ended by timer")
-        stopProgressTimer()
+      if (elapsed >= trackDurationRef.current) {
+        console.log("[v0] 🎵 Track ended")
+        stopProgressTracking()
         onTrackEnd()
       }
     }, 1000)
   }
 
-  const stopProgressTimer = () => {
-    console.log("[v0] 🛑 Stopping progress timer")
-    if (progressTimerRef.current) {
-      clearInterval(progressTimerRef.current)
-      progressTimerRef.current = null
+  const stopProgressTracking = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = null
     }
   }
 
@@ -170,7 +163,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         })
 
         spotifyPlayer.addListener("ready", async ({ device_id }) => {
-          console.log("🎧 Web Playback SDK device_id:", device_id)
+          console.log("🎧 Web Playback SDK ready, device_id:", device_id)
           setDeviceId(device_id)
           setError("")
           setIsLoading(false)
@@ -179,9 +172,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
           playbackStarted.current = true
 
           try {
-            await new Promise((res) => setTimeout(res, 1200))
+            await new Promise((res) => setTimeout(res, 500))
 
-            const transfer = await fetch("https://api.spotify.com/v1/me/player", {
+            await fetch("https://api.spotify.com/v1/me/player", {
               method: "PUT",
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -193,36 +186,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }),
             })
 
-            console.log("Transfer status:", transfer.status)
-
-            let deviceConfirmed = false
-            for (let i = 0; i < 6; i++) {
-              const devicesResp = await fetch("https://api.spotify.com/v1/me/player/devices", {
-                headers: { Authorization: `Bearer ${token}` }
-              })
-
-              const devicesJson = await devicesResp.json()
-              console.log(`[v0] Devices poll ${i + 1}:`, devicesJson)
-
-              if (Array.isArray(devicesJson.devices)) {
-                const found = devicesJson.devices.find((d: any) => d.id === device_id)
-                if (found) {
-                  console.log("[v0] ✅ Device confirmed active:", found)
-                  deviceConfirmed = true
-                  break
-                }
-              }
-
-              await new Promise((res) => setTimeout(res, 400))
-            }
-
-            if (!deviceConfirmed) {
-              console.warn("[v0] ⚠️ Device did NOT show up in devices list — playback may fail")
-            }
-
             await new Promise((res) => setTimeout(res, 500))
 
-            const play = await fetch(
+            const playResponse = await fetch(
               `https://api.spotify.com/v1/me/player/play?device_id=${device_id}`,
               {
                 method: "PUT",
@@ -236,16 +202,16 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
               }
             )
 
-            console.log("Play status:", play.status)
-
-            if (play.ok || play.status === 204) {
-              console.log("[v0] ✅✅✅ PLAYBACK STARTED SUCCESSFULLY")
+            if (playResponse.ok || playResponse.status === 204) {
+              console.log("[v0] ✅ PLAYBACK STARTED SUCCESSFULLY")
               
               const durationMs = track.duration ? track.duration * 1000 : 180000
-              startProgressTimer(durationMs)
+              startProgressTracking(durationMs)
+              
+              setIsPlaying(true)
             } else {
-              console.error("[v0] ❌ Play failed with status:", play.status)
-              setError(`Failed to start playback: ${play.status}`)
+              console.error("[v0] ❌ Play failed with status:", playResponse.status)
+              setError(`Failed to start playback: ${playResponse.status}`)
             }
           } catch (err) {
             console.error("[v0] ❌ Playback sequence error:", err)
@@ -259,8 +225,20 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
         spotifyPlayer.addListener("player_state_changed", (state) => {
           if (!state) return
-          setIsPlaying(!state.paused)
-          console.log(`[v0] STATE: ${state.paused ? '⏸️ PAUSED' : '▶️ PLAYING'}`)
+          
+          const wasPlaying = isPlaying
+          const nowPlaying = !state.paused
+          
+          setIsPlaying(nowPlaying)
+          console.log(`[v0] STATE: ${nowPlaying ? '▶️ PLAYING' : '⏸️ PAUSED'}`)
+          
+          if (nowPlaying && !wasPlaying && progressIntervalRef.current === null) {
+            const currentProgress = state.position / 1000
+            trackStartTimeRef.current = Date.now() - (currentProgress * 1000)
+            startProgressTracking(state.duration)
+          } else if (!nowPlaying && progressIntervalRef.current) {
+            stopProgressTracking()
+          }
         })
 
         console.log("[v0] Connecting player to Spotify...")
@@ -287,7 +265,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
 
     return () => {
       console.log("[v0] 🧹 Cleanup - disconnecting player")
-      stopProgressTimer()
+      stopProgressTracking()
       if (player) {
         player.disconnect()
       }
