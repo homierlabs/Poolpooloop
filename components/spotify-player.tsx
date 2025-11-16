@@ -99,12 +99,12 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
   }
 
   useEffect(() => {
-    if (initRef.current && deviceId && track.uri) {
+    if (initRef.current && deviceId && player && track.uri) {
       console.log("[v0] Track changed, playing new track:", track.name)
       stopProgressTracking()
       playTrack(track.uri)
     }
-  }, [track.uri])
+  }, [track.uri, deviceId, player])
 
   useEffect(() => {
     if (initRef.current) return
