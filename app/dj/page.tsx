@@ -183,6 +183,13 @@ export default function DJInterface() {
   }
 
   const selectWinner = () => {
+    if (votedIndex !== null && candidates[votedIndex]) {
+      console.log("[v0] User voted for:", candidates[votedIndex].name)
+      setNextTrack(candidates[votedIndex])
+      return
+    }
+
+    // Fallback to vote count if user didn't vote
     const maxVotes = Math.max(...votes)
     
     // Handle tie - pick random winner among tied tracks
@@ -194,7 +201,7 @@ export default function DJInterface() {
     const winnerIndex = winnerIndices[Math.floor(Math.random() * winnerIndices.length)]
 
     if (winnerIndex !== undefined && candidates[winnerIndex]) {
-      console.log("[v0] Winner selected:", candidates[winnerIndex].name, "with", maxVotes, "votes")
+      console.log("[v0] Winner by vote count:", candidates[winnerIndex].name, "with", maxVotes, "votes")
       setNextTrack(candidates[winnerIndex])
     } else {
       // Fallback: pick first candidate
@@ -288,7 +295,7 @@ export default function DJInterface() {
 
         <NowPlaying
           track={currentTrack}
-          timeRemaining={timeRemaining}
+          timeRemaining={votingActive ? timeRemaining : null}
           nextTrack={nextTrack}
           songProgress={songProgress}
         />
