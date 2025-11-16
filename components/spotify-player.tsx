@@ -82,7 +82,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       )
 
       if (playRes.ok || playRes.status === 204) {
-        await new Promise(res => setTimeout(res, 500))
+        await new Promise(res => setTimeout(res, 300))
         
         startProgressTracking()
         setIsPlaying(true)
@@ -132,7 +132,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
         // Step 2: Wait for Spotify SDK
         if (!window.Spotify) {
           await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("SDK timeout")), 10000)
+            const timeout = setTimeout(() => reject(new Error("SDK timeout")), 5000)
             
             window.onSpotifyWebPlaybackSDKReady = () => {
               clearTimeout(timeout)
@@ -146,7 +146,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
                 clearInterval(poll)
                 resolve()
               }
-            }, 100)
+            }, 50)
           })
         }
 
@@ -200,7 +200,7 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
             })
 
             // Wait for transfer to complete
-            await new Promise(res => setTimeout(res, 800))
+            await new Promise(res => setTimeout(res, 400))
 
             await playTrack(track.uri)
 
