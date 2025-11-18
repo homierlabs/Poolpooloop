@@ -139,7 +139,6 @@ export default function DJInterface() {
 
     setVotedIndex(index)
     
-    // Optimistically update UI
     setVotes((prev) => {
       const newVotes = [...prev]
       newVotes[index] += 1
@@ -168,7 +167,7 @@ export default function DJInterface() {
         })
         setVotedIndex(null)
       } else {
-        console.log("[v0] Vote recorded successfully")
+        console.log("[v0] Vote recorded successfully for:", candidates[index].name)
       }
     } catch (error) {
       console.error("[v0] Vote submission failed:", error)
@@ -183,13 +182,6 @@ export default function DJInterface() {
   }
 
   const selectWinner = () => {
-    if (votedIndex !== null && candidates[votedIndex]) {
-      console.log("[v0] User voted for:", candidates[votedIndex].name)
-      setNextTrack(candidates[votedIndex])
-      return
-    }
-
-    // Fallback to vote count if user didn't vote
     const maxVotes = Math.max(...votes)
     
     // Handle tie - pick random winner among tied tracks
@@ -201,11 +193,12 @@ export default function DJInterface() {
     const winnerIndex = winnerIndices[Math.floor(Math.random() * winnerIndices.length)]
 
     if (winnerIndex !== undefined && candidates[winnerIndex]) {
-      console.log("[v0] Winner by vote count:", candidates[winnerIndex].name, "with", maxVotes, "votes")
-      setNextTrack(candidates[winnerIndex])
+      const winningTrack = candidates[winnerIndex]
+      console.log("[v0] Winner selected:", winningTrack.name, "at index", winnerIndex, "with", maxVotes, "votes")
+      setNextTrack(winningTrack)
     } else {
       // Fallback: pick first candidate
-      console.log("[v0] No clear winner, selecting first candidate")
+      console.log("[v0] No clear winner, selecting first candidate as fallback")
       setNextTrack(candidates[0])
     }
   }
@@ -295,9 +288,10 @@ export default function DJInterface() {
 
         <NowPlaying
           track={currentTrack}
-          timeRemaining={votingActive ? timeRemaining : null}
+          timeRemaining={timeRemaining}
           nextTrack={nextTrack}
           songProgress={songProgress}
+          votingActive={votingActive}
         />
 
         {nextTrack && <NextUpBanner track={nextTrack} />}

@@ -9,9 +9,10 @@ interface NowPlayingProps {
   timeRemaining: number
   nextTrack?: Track | null
   songProgress: number
+  votingActive?: boolean
 }
 
-export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: NowPlayingProps) {
+export function NowPlaying({ track, timeRemaining, nextTrack, songProgress, votingActive = false }: NowPlayingProps) {
   const [bars, setBars] = useState<number[]>([])
 
   useEffect(() => {
@@ -32,11 +33,13 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress }: No
   return (
     <div className="mb-6 sm:mb-8 animate-slide-up">
       <div className="bg-gradient-to-b from-card to-secondary/50 rounded-lg sm:rounded-xl p-4 sm:p-6 relative overflow-hidden">
-        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
-          <div className="bg-primary text-primary-foreground px-3 py-1.5 sm:px-4 sm:py-2 rounded-full">
-            <div className="text-lg sm:text-2xl font-bold">{timeRemaining}s</div>
+        {votingActive && (
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 animate-slide-up">
+            <div className="bg-primary text-primary-foreground px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg">
+              <div className="text-lg sm:text-2xl font-bold">{timeRemaining}s</div>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-6 mb-4 sm:mb-6">
           <div className="flex flex-col w-full sm:w-auto">
