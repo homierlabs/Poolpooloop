@@ -39,10 +39,9 @@ export function SpotifyPlayer({ track, onProgress, onTrackEnd }: SpotifyPlayerPr
       const elapsed = Math.floor((Date.now() - playbackStartTimeRef.current) / 1000)
       onProgress(elapsed)
       
-      // Check if track has ended
       const trackDuration = track.duration || 180
-      if (elapsed >= trackDuration) {
-        console.log("[v0] Track ended, calling onTrackEnd")
+      if (elapsed >= trackDuration - 1) {
+        console.log("[v0] Track ended at", elapsed, "seconds, calling onTrackEnd")
         clearInterval(progressIntervalRef.current!)
         progressIntervalRef.current = null
         onTrackEnd()

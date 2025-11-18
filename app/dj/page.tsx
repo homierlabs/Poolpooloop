@@ -39,7 +39,7 @@ export default function DJInterface() {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
           selectWinner()
-          setVotingActive(false)
+          clearInterval(votingTimer)
           return 0
         }
         return prev - 1
@@ -182,6 +182,8 @@ export default function DJInterface() {
   }
 
   const selectWinner = () => {
+    console.log("[v0] Selecting winner from votes:", votes)
+    
     const maxVotes = Math.max(...votes)
     
     // Handle tie - pick random winner among tied tracks
@@ -196,10 +198,18 @@ export default function DJInterface() {
       const winningTrack = candidates[winnerIndex]
       console.log("[v0] Winner selected:", winningTrack.name, "at index", winnerIndex, "with", maxVotes, "votes")
       setNextTrack(winningTrack)
+      
+      setVotingActive(false)
+      setTimeRemaining(VOTING_DURATION)
+      setVotedIndex(null)
     } else {
       // Fallback: pick first candidate
       console.log("[v0] No clear winner, selecting first candidate as fallback")
       setNextTrack(candidates[0])
+      
+      setVotingActive(false)
+      setTimeRemaining(VOTING_DURATION)
+      setVotedIndex(null)
     }
   }
 
@@ -229,20 +239,27 @@ export default function DJInterface() {
   }
 
   const handleTrackEnd = () => {
+    console.log("[v0] Track ended, nextTrack:", nextTrack?.name || "none")
+    
     if (nextTrack) {
       console.log("[v0] Moving to next track:", nextTrack.name)
-      setCurrentTrack(nextTrack)
-      setSongProgress(0)
+      
+      const upcomingTrack = nextTrack
+      
+      // Reset all voting state
+      setNextTrack(null)
       setVotingActive(false)
       setVotedIndex(null)
       setVotes([0, 0, 0, 0])
       setTimeRemaining(VOTING_DURATION)
+      setSongProgress(0)
       
-      const nextTrackCopy = nextTrack
-      setNextTrack(null)
-      fetchSimilarTracks(nextTrackCopy)
+      setCurrentTrack(upcomingTrack)
+      
+      // Fetch new candidates for the next voting round
+      fetchSimilarTracks(upcomingTrack)
     } else {
-      console.log("[v0] No next track selected, track will loop or stop")
+      console.log("[v0] No next track queued, playback will end")
     }
   }
 
