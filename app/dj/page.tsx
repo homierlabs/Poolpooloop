@@ -27,6 +27,7 @@ export default function DJInterface() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [roundId, setRoundId] = useState<string>("")
+  const [hasVotedThisTrack, setHasVotedThisTrack] = useState(false)
 
   useEffect(() => {
     checkAuthAndFetch()
@@ -219,11 +220,20 @@ export default function DJInterface() {
     const trackDuration = currentTrack.duration || TRACK_DURATION_FALLBACK
     const midPoint = Math.floor(trackDuration / 2)
     
-    if (progress >= midPoint && !votingActive && candidates.length >= 4 && !nextTrack) {
+    if (
+      progress >= midPoint && 
+      !votingActive && 
+      !hasVotedThisTrack &&
+      candidates.length >= 4 && 
+      !nextTrack &&
+      progress < (trackDuration - 10)
+    ) {
+      console.log("[v0] Activating voting at midpoint:", progress, "/", trackDuration)
       setVotingActive(true)
       setTimeRemaining(VOTING_DURATION)
       setVotes([0, 0, 0, 0])
       setVotedIndex(null)
+      setHasVotedThisTrack(true)
     }
   }
 
@@ -242,6 +252,7 @@ export default function DJInterface() {
       setVotes([0, 0, 0, 0])
       setTimeRemaining(VOTING_DURATION)
       setSongProgress(0)
+      setHasVotedThisTrack(false)
       
       setCurrentTrack(upcomingTrack)
       
@@ -299,6 +310,7 @@ export default function DJInterface() {
         </div>
 
         <NowPlaying
+          key={currentTrack.id}
           track={currentTrack}
           timeRemaining={timeRemaining}
           nextTrack={nextTrack}
