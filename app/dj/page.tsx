@@ -137,7 +137,11 @@ export default function DJInterface() {
   const handleVote = async (index: number) => {
     if (!votingActive || votedIndex !== null || !roundId) return
 
+    const selectedTrack = candidates[index]
     setVotedIndex(index)
+    
+    console.log("[v0] User voted for:", selectedTrack.name, "- Setting as next track")
+    setNextTrack(selectedTrack)
     
     setVotes((prev) => {
       const newVotes = [...prev]
@@ -159,58 +163,43 @@ export default function DJInterface() {
 
       if (!response.ok) {
         console.error("[v0] Vote failed:", data.error)
-        // Revert optimistic update
-        setVotes((prev) => {
-          const newVotes = [...prev]
-          newVotes[index] = Math.max(0, newVotes[index] - 1)
-          return newVotes
-        })
-        setVotedIndex(null)
+        // Don't revert nextTrack even if server fails - user has made their choice
       } else {
         console.log("[v0] Vote recorded successfully for:", candidates[index].name)
       }
     } catch (error) {
       console.error("[v0] Vote submission failed:", error)
-      // Revert optimistic update
-      setVotes((prev) => {
-        const newVotes = [...prev]
-        newVotes[index] = Math.max(0, newVotes[index] - 1)
-        return newVotes
-      })
-      setVotedIndex(null)
+      // Don't revert - user has made their choice
     }
   }
 
   const selectWinner = () => {
-    console.log("[v0] Selecting winner from votes:", votes)
+    console.log("[v0] Voting period ended")
     
-    const maxVotes = Math.max(...votes)
-    
-    // Handle tie - pick random winner among tied tracks
-    const winnerIndices = votes
-      .map((v, i) => ({ votes: v, index: i }))
-      .filter(v => v.votes === maxVotes)
-      .map(v => v.index)
-    
-    const winnerIndex = winnerIndices[Math.floor(Math.random() * winnerIndices.length)]
-
-    if (winnerIndex !== undefined && candidates[winnerIndex]) {
-      const winningTrack = candidates[winnerIndex]
-      console.log("[v0] Winner selected:", winningTrack.name, "at index", winnerIndex, "with", maxVotes, "votes")
-      setNextTrack(winningTrack)
-      
-      setVotingActive(false)
-      setTimeRemaining(VOTING_DURATION)
-      setVotedIndex(null)
-    } else {
-      // Fallback: pick first candidate
-      console.log("[v0] No clear winner, selecting first candidate as fallback")
-      setNextTrack(candidates[0])
-      
-      setVotingActive(false)
-      setTimeRemaining(VOTING_DURATION)
-      setVotedIndex(null)
+    if (votedIndex !== null && nextTrack) {
+      console.log("[v0] User voted for:", nextTrack.name, "- Keeping their choice")
+    } else if (votes.length > 0) {
+      // Pick winner based on votes if user didn't vote
+      const maxVotes = Math.max(...votes)
+      if (maxVotes > 0) {
+        const winnerIndices = votes
+          .map((v, i) => ({ votes: v, index: i }))
+          .filter(v => v.votes === maxVotes)
+          .map(v => v.index)
+        
+        const winnerIndex = winnerIndices[Math.floor(Math.random() * winnerIndices.length)]
+        const winningTrack = candidates[winnerIndex]
+        console.log("[v0] No user vote, winner by votes:", winningTrack.name)
+        setNextTrack(winningTrack)
+      } else {
+        // No votes at all, pick first
+        console.log("[v0] No votes, defaulting to first candidate")
+        setNextTrack(candidates[0])
+      }
     }
+    
+    setVotingActive(false)
+    setTimeRemaining(VOTING_DURATION)
   }
 
   const handleLogout = async () => {
@@ -239,14 +228,14 @@ export default function DJInterface() {
   }
 
   const handleTrackEnd = () => {
-    console.log("[v0] Track ended, nextTrack:", nextTrack?.name || "none")
+    console.log("[v0] ===== TRACK ENDED =====")
+    console.log("[v0] Current track:", currentTrack?.name)
+    console.log("[v0] Next track queued:", nextTrack?.name || "NONE")
     
     if (nextTrack) {
-      console.log("[v0] Moving to next track:", nextTrack.name)
+      const upcomingTrack = { ...nextTrack }
+      console.log("[v0] Transitioning to next track:", upcomingTrack.name)
       
-      const upcomingTrack = nextTrack
-      
-      // Reset all voting state
       setNextTrack(null)
       setVotingActive(false)
       setVotedIndex(null)
@@ -256,10 +245,11 @@ export default function DJInterface() {
       
       setCurrentTrack(upcomingTrack)
       
-      // Fetch new candidates for the next voting round
-      fetchSimilarTracks(upcomingTrack)
+      setTimeout(() => {
+        fetchSimilarTracks(upcomingTrack)
+      }, 1000)
     } else {
-      console.log("[v0] No next track queued, playback will end")
+      console.log("[v0] No next track queued - playback ending")
     }
   }
 
@@ -292,7 +282,12 @@ export default function DJInterface() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <SpotifyPlayer track={currentTrack} onProgress={handlePlayerProgress} onTrackEnd={handleTrackEnd} />
+      <SpotifyPlayer 
+        track={currentTrack} 
+        nextTrack={nextTrack}
+        onProgress={handlePlayerProgress} 
+        onTrackEnd={handleTrackEnd} 
+      />
 
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex justify-between items-center">
