@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react"
 import type { Track } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { Play, Pause, Volume2, VolumeX, Loader2, AlertCircle } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Loader2, AlertCircle } from "lucide-react"
+import type Spotify from "spotify-web-playback-sdk" // Declare the Spotify variable
 
 interface SpotifyPlayerProps {
   track: Track
@@ -22,29 +23,31 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
   const [isMuted, setIsMuted] = useState(false)
   const [error, setError] = useState<string>("")
   const [isPremium, setIsPremium] = useState(true)
-  
+
   const initRef = useRef(false)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartTimeRef = useRef<number>(0)
   const accessTokenRef = useRef<string>("")
   const currentTrackUriRef = useRef<string>("")
   const queuedNextTrackRef = useRef<string>("")
+  const trackEndCalledRef = useRef<string>("")
 
-  const startProgressTracking = () => {
+  const startProgressTracking = (trackUri: string, durationSec: number) => {
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current)
     }
 
     playbackStartTimeRef.current = Date.now()
+    trackEndCalledRef.current = ""
     onProgress(0)
-    
+
     progressIntervalRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - playbackStartTimeRef.current) / 1000)
       onProgress(elapsed)
-      
-      const trackDuration = track.duration || 180
-      if (elapsed >= trackDuration - 2) {
-        console.log("[v0] Track ending at", elapsed, "seconds (duration:", trackDuration, "), calling onTrackEnd")
+
+      if (elapsed >= durationSec - 2 && trackEndCalledRef.current !== trackUri) {
+        console.log("[v0] Track ending at", elapsed, "seconds")
+        trackEndCalledRef.current = trackUri
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current)
           progressIntervalRef.current = null
@@ -61,41 +64,38 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
     }
   }
 
-  const playTrack = async (trackUri: string) => {
+  const playTrack = async (trackUri: string, durationSec: number) => {
     if (!deviceId || !accessTokenRef.current) {
       console.error("[v0] Cannot play track - no device or token")
       return
     }
 
     try {
-      console.log("[v0] Playing new track:", trackUri)
+      console.log("[v0] Playing track:", trackUri)
       setIsLoading(true)
       stopProgressTracking()
-      
-      const playRes = await fetch(
-        `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${accessTokenRef.current}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            uris: [trackUri],
-          }),
-        }
-      )
+
+      const playRes = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessTokenRef.current}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uris: [trackUri],
+        }),
+      })
 
       if (playRes.ok || playRes.status === 204) {
-        await new Promise(res => setTimeout(res, 300))
-        
+        await new Promise((res) => setTimeout(res, 300))
+
         currentTrackUriRef.current = trackUri
         queuedNextTrackRef.current = ""
-        
-        startProgressTracking()
+
+        startProgressTracking(trackUri, durationSec)
         setIsPlaying(true)
         setIsLoading(false)
-        console.log("[v0] New track playing successfully")
+        console.log("[v0] Track playing, duration:", durationSec, "seconds")
       } else {
         setError(`Play failed: ${playRes.status}`)
         setIsLoading(false)
@@ -112,43 +112,37 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
     }
 
     try {
-      console.log("[v0] Queuing next track in Spotify:", trackUri)
-      
-      const queueRes = await fetch(
-        `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessTokenRef.current}`,
-          },
-        }
-      )
+      console.log("[v0] Queuing next track:", trackUri)
+
+      const queueRes = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessTokenRef.current}`,
+        },
+      })
 
       if (queueRes.ok || queueRes.status === 204) {
         queuedNextTrackRef.current = trackUri
-        console.log("[v0] Successfully queued next track in Spotify")
-      } else {
-        console.error("[v0] Failed to queue track:", queueRes.status)
+        console.log("[v0] Queued successfully")
       }
     } catch (err) {
-      console.error("[v0] Queue API error:", err)
+      console.error("[v0] Queue error:", err)
     }
   }
 
   useEffect(() => {
     if (nextTrack?.uri && deviceId && accessTokenRef.current) {
-      console.log("[v0] Next track set, queuing in Spotify:", nextTrack.name)
       queueNextTrack(nextTrack.uri)
     }
   }, [nextTrack?.uri, deviceId])
 
   useEffect(() => {
     if (initRef.current && deviceId && player && track.uri && track.uri !== currentTrackUriRef.current) {
-      console.log("[v0] Track changed from", currentTrackUriRef.current, "to", track.uri)
-      console.log("[v0] Playing new track:", track.name)
-      playTrack(track.uri)
+      console.log("[v0] Track prop changed, playing new track:", track.name)
+      const duration = track.duration || 180
+      playTrack(track.uri, duration)
     }
-  }, [track.uri, deviceId, player])
+  }, [track.uri, track.id, deviceId, player])
 
   useEffect(() => {
     if (initRef.current) return
@@ -160,7 +154,7 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
       try {
         setIsLoading(true)
         setError("")
-        
+
         const sessionRes = await fetch("/api/auth/session")
         const sessionData = await sessionRes.json()
 
@@ -175,12 +169,12 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
         if (!window.Spotify) {
           await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error("SDK timeout")), 5000)
-            
+
             window.onSpotifyWebPlaybackSDKReady = () => {
               clearTimeout(timeout)
               resolve()
             }
-            
+
             const poll = setInterval(() => {
               if (window.Spotify) {
                 clearTimeout(timeout)
@@ -218,11 +212,11 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
         })
 
         spotifyPlayer.addListener("ready", async ({ device_id }) => {
-          console.log("[v0] Player ready with device ID:", device_id)
+          console.log("[v0] Player ready:", device_id)
           setDeviceId(device_id)
           setPlayer(spotifyPlayer)
           setError("")
-          
+
           try {
             await fetch("https://api.spotify.com/v1/me/player", {
               method: "PUT",
@@ -236,38 +230,27 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
               }),
             })
 
-            await new Promise(res => setTimeout(res, 400))
+            await new Promise((res) => setTimeout(res, 400))
 
-            await playTrack(track.uri)
-
+            const duration = track.duration || 180
+            await playTrack(track.uri, duration)
           } catch (err) {
-            setError(`Playback setup failed: ${String(err)}`)
+            setError(`Setup failed: ${String(err)}`)
             setIsLoading(false)
           }
         })
 
         spotifyPlayer.addListener("player_state_changed", (state) => {
           if (!state) return
-          
-          const nowPlaying = !state.paused
-          setIsPlaying(nowPlaying)
-          
-          if (nowPlaying && !progressIntervalRef.current) {
-            const currentSec = Math.floor(state.position / 1000)
-            playbackStartTimeRef.current = Date.now() - (currentSec * 1000)
-            startProgressTracking()
-          } else if (!nowPlaying && progressIntervalRef.current) {
-            stopProgressTracking()
-          }
+          setIsPlaying(!state.paused)
         })
 
         const connected = await spotifyPlayer.connect()
-        
+
         if (!connected) {
           setError("Failed to connect")
           setIsLoading(false)
         }
-
       } catch (err) {
         setError(`Init failed: ${String(err)}`)
         setIsLoading(false)
@@ -316,9 +299,7 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
           <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="font-semibold text-destructive mb-1">Spotify Premium Required</h4>
-            <p className="text-sm text-muted-foreground">
-              Full song playback requires Spotify Premium.
-            </p>
+            <p className="text-sm text-muted-foreground">Full song playback requires Spotify Premium.</p>
           </div>
         </div>
       </div>
