@@ -3,6 +3,7 @@
 import type { Track } from "@/lib/types"
 import Image from "next/image"
 import { useEffect, useState } from "react"
+import { Disc3, Sparkles } from "lucide-react"
 
 interface NowPlayingProps {
   track: Track
@@ -16,7 +17,7 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress, voti
   const [bars, setBars] = useState<number[]>([])
 
   useEffect(() => {
-    const newBars = Array.from({ length: 100 }, () => Math.random() * 100)
+    const newBars = Array.from({ length: 80 }, () => Math.random() * 100)
     setBars(newBars)
   }, [track.id])
 
@@ -27,101 +28,145 @@ export function NowPlaying({ track, timeRemaining, nextTrack, songProgress, voti
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
   return (
-    <div className="mb-6 sm:mb-8 animate-slide-up">
-      <div className="bg-gradient-to-b from-card to-secondary/50 rounded-lg sm:rounded-xl p-4 sm:p-6 relative overflow-hidden">
-        {votingActive && (
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 animate-slide-up">
-            <div className="bg-primary text-primary-foreground px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg">
-              <div className="text-lg sm:text-2xl font-bold">{timeRemaining}s</div>
-            </div>
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* Main player card */}
+      <div className="relative bg-zinc-900/80 backdrop-blur-xl rounded-2xl border border-zinc-800/50 overflow-hidden">
+        {/* Glow effect behind album art */}
+        <div
+          className="absolute top-0 left-0 w-64 h-64 opacity-30 blur-3xl pointer-events-none"
+          style={{
+            background: `radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, transparent 70%)`,
+          }}
+        />
 
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-6 mb-4 sm:mb-6">
-          <div className="flex flex-col w-full sm:w-auto">
-            <div className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
-              Now Playing
-            </div>
-            <div className="flex items-end gap-3 sm:gap-4">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg">
-                <Image
-                  src={track.albumArt || "/placeholder.svg"}
-                  alt={`${track.name} album`}
-                  width={80}
-                  height={80}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0">
-                <div className="text-base sm:text-lg font-bold truncate">{track.name || "Unknown Track"}</div>
-                <div className="text-xs sm:text-sm text-muted-foreground truncate">{track.artist || "Unknown Artist"}</div>
-                <div className="text-xs text-muted-foreground/70 truncate">{track.album || "Unknown Album"}</div>
-                {track.year && <div className="text-xs text-muted-foreground/70">{track.year}</div>}
-              </div>
-            </div>
-          </div>
-
-          {nextTrack && (
-            <div className="flex flex-col w-full sm:w-auto">
-              <div className="text-xs sm:text-sm font-bold text-primary uppercase tracking-wider mb-2 sm:text-right">
-                Up Next
-              </div>
-              <div className="flex items-end gap-3 sm:gap-4">
-                <div className="text-foreground flex flex-col justify-end pb-0.5 min-w-0 sm:text-right sm:order-1">
-                  <div className="text-base sm:text-lg font-bold truncate">{nextTrack.name || "Unknown Track"}</div>
-                  <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                    {nextTrack.artist || "Unknown Artist"}
-                  </div>
-                  <div className="text-xs text-muted-foreground/70 truncate">{nextTrack.album || "Unknown Album"}</div>
-                  {nextTrack.year && <div className="text-xs text-muted-foreground/70">{nextTrack.year}</div>}
-                </div>
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0 shadow-lg sm:order-2">
-                  <Image
-                    src={nextTrack.albumArt || "/placeholder.svg"}
-                    alt={`${nextTrack.name} album`}
-                    width={80}
-                    height={80}
-                    className="w-full h-full object-cover"
-                  />
+        <div className="relative p-6 md:p-8">
+          {/* Voting countdown badge */}
+          {votingActive && (
+            <div className="absolute top-4 right-4 md:top-6 md:right-6 z-20">
+              <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500 rounded-full blur-lg opacity-50 animate-pulse" />
+                <div className="relative bg-gradient-to-br from-emerald-500 to-emerald-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                  <span className="text-xl font-bold tabular-nums">{timeRemaining}s</span>
                 </div>
               </div>
             </div>
           )}
-        </div>
 
-        <div className="relative flex items-center gap-[1px] sm:gap-[2px] overflow-hidden rounded bg-secondary/80 px-1 sm:px-2 h-10 sm:h-14">
-          {bars.map((height, index) => {
-            const barProgress = (index / bars.length) * 100
-            const isPassed = barProgress <= progressPercentage
+          <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
+            {/* Album art section */}
+            <div className="flex-shrink-0">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-br from-emerald-500/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-xl overflow-hidden shadow-2xl">
+                  <Image
+                    src={track.albumArt || "/placeholder.svg?height=224&width=224&query=album cover"}
+                    alt={`${track.name} album`}
+                    fill
+                    className="object-cover"
+                  />
+                  {/* Spinning disc overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Disc3 className="w-12 h-12 text-white animate-spin-slow" />
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            return (
-              <div
-                key={index}
-                className="flex-1 transition-all duration-300 rounded-sm"
-                style={{
-                  height: `${height}%`,
-                  backgroundColor: isPassed ? "#1db954" : "#535353",
-                  opacity: isPassed ? 1 : 0.4,
-                }}
-              />
-            )
-          })}
+            {/* Track info section */}
+            <div className="flex-1 flex flex-col justify-between min-w-0">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-xs font-medium rounded-full border border-emerald-500/20">
+                    NOW PLAYING
+                  </span>
+                </div>
+                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white truncate mb-2">
+                  {track.name || "Unknown Track"}
+                </h2>
+                <p className="text-lg text-zinc-400 truncate mb-1">{track.artist || "Unknown Artist"}</p>
+                <div className="flex items-center gap-2 text-sm text-zinc-500">
+                  <span className="truncate">{track.album || "Unknown Album"}</span>
+                  {track.year && (
+                    <>
+                      <span>•</span>
+                      <span>{track.year}</span>
+                    </>
+                  )}
+                </div>
+              </div>
 
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-foreground/60 transition-all duration-500 ease-linear"
-            style={{ left: `${Math.min(progressPercentage, 100)}%` }}
-          />
-        </div>
+              {/* Progress section */}
+              <div className="mt-6">
+                {/* Waveform visualization */}
+                <div className="relative h-16 md:h-20 bg-zinc-800/50 rounded-xl overflow-hidden px-2">
+                  <div className="absolute inset-0 flex items-center gap-[2px]">
+                    {bars.map((height, index) => {
+                      const barProgress = (index / bars.length) * 100
+                      const isPassed = barProgress <= progressPercentage
 
-        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-          <span>{formatTime(displayProgress)}</span>
-          <span>{formatTime(trackDuration)}</span>
+                      return (
+                        <div
+                          key={index}
+                          className="flex-1 transition-all duration-200 rounded-sm"
+                          style={{
+                            height: `${height}%`,
+                            backgroundColor: isPassed ? "#10b981" : "#3f3f46",
+                            opacity: isPassed ? 1 : 0.5,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  {/* Progress line indicator */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg shadow-white/50 transition-all duration-500 ease-linear"
+                    style={{ left: `${Math.min(progressPercentage, 100)}%` }}
+                  />
+                </div>
+
+                {/* Time display */}
+                <div className="flex justify-between items-center mt-3 text-sm">
+                  <span className="text-white font-medium tabular-nums">{formatTime(displayProgress)}</span>
+                  <span className="text-zinc-500 tabular-nums">{formatTime(trackDuration)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Up Next section */}
+      {nextTrack && !votingActive && (
+        <div className="bg-zinc-900/60 backdrop-blur-xl rounded-xl border border-zinc-800/50 p-4 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-4">
+            <div className="flex-shrink-0 relative">
+              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-500/30 to-transparent rounded-lg blur-sm" />
+              <div className="relative w-14 h-14 rounded-lg overflow-hidden">
+                <Image
+                  src={nextTrack.albumArt || "/placeholder.svg?height=56&width=56&query=album"}
+                  alt={`${nextTrack.name} album`}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <Sparkles className="w-3 h-3 text-emerald-400" />
+                <span className="text-xs text-emerald-400 font-medium uppercase tracking-wider">Up Next</span>
+              </div>
+              <p className="text-white font-semibold truncate">{nextTrack.name}</p>
+              <p className="text-zinc-400 text-sm truncate">{nextTrack.artist}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
