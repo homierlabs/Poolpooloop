@@ -294,12 +294,14 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
 
   if (!isPremium) {
     return (
-      <div className="fixed bottom-6 right-6 bg-destructive/10 border border-destructive rounded-lg shadow-lg p-4 z-50 max-w-[320px]">
+      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 bg-destructive/10 border border-destructive/30 rounded-2xl shadow-xl p-4 z-50 max-w-[320px] backdrop-blur-sm">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div className="w-10 h-10 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+          </div>
           <div>
-            <h4 className="font-semibold text-destructive mb-1">Spotify Premium Required</h4>
-            <p className="text-sm text-muted-foreground">Full song playback requires Spotify Premium.</p>
+            <h4 className="font-semibold text-destructive mb-1">Premium Required</h4>
+            <p className="text-sm text-muted-foreground">Spotify Premium is needed for playback.</p>
           </div>
         </div>
       </div>
@@ -307,27 +309,33 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
   }
 
   return (
-    <div className="fixed bottom-6 right-6 bg-card border border-border rounded-lg shadow-lg p-4 flex flex-col gap-3 z-50 min-w-[280px]">
+    <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-xl p-4 flex flex-col gap-3 z-50 min-w-[260px] md:min-w-[300px]">
       {error && (
-        <div className="flex items-center gap-2 text-destructive text-sm">
-          <AlertCircle className="w-4 h-4" />
-          <span>{error}</span>
+        <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 rounded-lg p-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="truncate">{error}</span>
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Initializing player...</span>
+        <div className="flex items-center gap-3 text-muted-foreground py-1">
+          <div className="relative">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+          <span className="text-sm font-medium">Initializing player...</span>
         </div>
       ) : (
-        <div className="flex items-center gap-4">
-          <Button onClick={togglePlayPause} size="icon" variant="default" className="h-10 w-10">
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={togglePlayPause} 
+            size="icon" 
+            className="h-12 w-12 rounded-full shadow-md hover:shadow-lg transition-shadow"
+          >
+            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
           </Button>
 
-          <div className="flex items-center gap-2 flex-1">
-            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-8 w-8">
+          <div className="flex items-center gap-2 flex-1 bg-secondary/50 rounded-full px-3 py-2">
+            <Button onClick={toggleMute} size="icon" variant="ghost" className="h-7 w-7 rounded-full">
               {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </Button>
 
@@ -338,7 +346,7 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
               step={1}
               className="flex-1"
             />
-            <span className="text-xs text-muted-foreground w-8 text-right">{isMuted ? 0 : volume}%</span>
+            <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{isMuted ? 0 : volume}%</span>
           </div>
         </div>
       )}

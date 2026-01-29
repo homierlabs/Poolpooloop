@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { NowPlaying } from "@/components/now-playing"
 import { VotingGrid } from "@/components/voting-grid"
 import { SpotifyPlayer } from "@/components/spotify-player"
 import { Button } from "@/components/ui/button"
+import { NextUpBanner } from "@/components/next-up-banner" // Import NextUpBanner
 import type { Track } from "@/lib/types"
 import { LogOut, Music2 } from "lucide-react"
 
@@ -26,8 +27,9 @@ export default function DJInterface() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [roundId, setRoundId] = useState<string>("")
-  const [trackKey, setTrackKey] = useState<string>("")
+  const [trackKey, setTrackKey] = useState<number>(0)
 
+  const currentTrackIdRef = useRef<string>("") // Declare currentTrackIdRef
   const votingTriggeredForTrackRef = useRef<string>("")
   const isTransitioningRef = useRef(false)
 
@@ -87,8 +89,8 @@ export default function DJInterface() {
       const data = await response.json()
 
       if (data.track) {
-        setTrackKey(data.track.id)
         setCurrentTrack(data.track)
+        setTrackKey(Date.now())
         await fetchSimilarTracks(data.track)
       } else {
         router.push("/select-song")
@@ -221,7 +223,7 @@ export default function DJInterface() {
     }
   }
 
-  const handleTrackEnd = useCallback(() => {
+  const handleTrackEnd = () => {
     console.log("[v0] ===== TRACK ENDED =====")
 
     if (nextTrack) {
@@ -230,8 +232,7 @@ export default function DJInterface() {
 
       isTransitioningRef.current = true
 
-      setTrackKey(upcomingTrack.id)
-
+      // Reset all state for new track
       setNextTrack(null)
       setVotingActive(false)
       setVotedIndex(null)
@@ -240,7 +241,9 @@ export default function DJInterface() {
       setSongProgress(0)
       setCandidates([])
 
+      // Set new current track and force UI update
       setCurrentTrack(upcomingTrack)
+      setTrackKey(Date.now())
 
       setTimeout(() => {
         isTransitioningRef.current = false
@@ -249,17 +252,17 @@ export default function DJInterface() {
     } else {
       console.log("[v0] No next track queued")
     }
-  }, [nextTrack])
+  }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
-            <Music2 className="w-6 h-6 text-emerald-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <Music2 className="w-6 h-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
           </div>
-          <p className="text-zinc-400 text-sm animate-pulse">Loading your session...</p>
+          <p className="text-muted-foreground animate-pulse">Loading session...</p>
         </div>
       </div>
     )
@@ -267,13 +270,13 @@ export default function DJInterface() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
-        <div className="text-center space-y-4 p-8 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
-            <span className="text-2xl">⚠️</span>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-destructive/5">
+        <div className="text-center space-y-4 p-8 bg-card rounded-2xl border shadow-lg max-w-md">
+          <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
+            <Music2 className="w-6 h-6 text-destructive" />
           </div>
-          <p className="text-red-400">{error}</p>
-          <Button onClick={() => router.push("/select-song")} className="bg-emerald-600 hover:bg-emerald-700">
+          <p className="text-destructive font-medium">{error}</p>
+          <Button onClick={() => router.push("/select-song")} className="w-full">
             Back to Song Selection
           </Button>
         </div>
@@ -283,20 +286,20 @@ export default function DJInterface() {
 
   if (!currentTrack) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
-        <div className="w-16 h-16 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <Music2 className="w-6 h-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          </div>
+          <p className="text-muted-foreground animate-pulse">Preparing track...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
-      {/* Background ambient glow */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-emerald-500/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-emerald-500/3 rounded-full blur-3xl" />
-      </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <SpotifyPlayer
         track={currentTrack}
         nextTrack={nextTrack}
@@ -304,26 +307,20 @@ export default function DJInterface() {
         onTrackEnd={handleTrackEnd}
       />
 
-      <div className="relative z-10 max-w-7xl mx-auto p-4 md:p-8 space-y-8">
-        {/* Header */}
+      <div className="max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-10 space-y-8">
         <header className="flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Music2 className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+              <Music2 className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white">DJ Session</h1>
-              <p className="text-zinc-500 text-sm">Interactive voting experience</p>
+              <h1 className="text-2xl font-bold tracking-tight">DJ Session</h1>
+              <p className="text-sm text-muted-foreground">Vote for what plays next</p>
             </div>
           </div>
-          <Button
-            onClick={handleLogout}
-            variant="ghost"
-            size="sm"
-            className="text-zinc-400 hover:text-white hover:bg-zinc-800"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Exit
+          <Button onClick={handleLogout} variant="outline" size="sm" className="gap-2 bg-transparent">
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Logout</span>
           </Button>
         </header>
 
@@ -342,7 +339,6 @@ export default function DJInterface() {
           votedIndex={votedIndex}
           onVote={handleVote}
           isActive={votingActive}
-          timeRemaining={timeRemaining}
         />
       </div>
     </div>
