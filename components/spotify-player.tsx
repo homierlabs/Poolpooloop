@@ -5,7 +5,27 @@ import type { Track } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Play, Pause, Volume2, VolumeX, Loader2, AlertCircle } from "lucide-react"
-import type Spotify from "spotify-web-playback-sdk" // Declare the Spotify variable
+
+declare global {
+  interface Window {
+    Spotify: {
+      Player: new (options: {
+        name: string
+        getOAuthToken: (cb: (token: string) => void) => void
+        volume?: number
+      }) => SpotifyPlayer
+    }
+    onSpotifyWebPlaybackSDKReady: (() => void) | undefined
+  }
+}
+
+interface SpotifyPlayer {
+  connect: () => Promise<boolean>
+  disconnect: () => void
+  togglePlay: () => Promise<void>
+  setVolume: (volume: number) => Promise<void>
+  addListener: (event: string, callback: (data: any) => void) => void
+}
 
 interface SpotifyPlayerProps {
   track: Track
@@ -15,7 +35,7 @@ interface SpotifyPlayerProps {
 }
 
 export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: SpotifyPlayerProps) {
-  const [player, setPlayer] = useState<Spotify.Player | null>(null)
+  const [player, setPlayer] = useState<SpotifyPlayer | null>(null)
   const [deviceId, setDeviceId] = useState<string>("")
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -148,7 +168,7 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
     if (initRef.current) return
     initRef.current = true
 
-    let spotifyPlayer: Spotify.Player | null = null
+    let spotifyPlayer: SpotifyPlayer | null = null
 
     const initialize = async () => {
       try {

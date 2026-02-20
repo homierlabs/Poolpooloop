@@ -6,7 +6,6 @@ import { NowPlaying } from "@/components/now-playing"
 import { VotingGrid } from "@/components/voting-grid"
 import { SpotifyPlayer } from "@/components/spotify-player"
 import { Button } from "@/components/ui/button"
-import { NextUpBanner } from "@/components/next-up-banner" // Import NextUpBanner
 import type { Track } from "@/lib/types"
 import { LogOut, Music2 } from "lucide-react"
 
@@ -29,7 +28,6 @@ export default function DJInterface() {
   const [roundId, setRoundId] = useState<string>("")
   const [trackKey, setTrackKey] = useState<number>(0)
 
-  const currentTrackIdRef = useRef<string>("") // Declare currentTrackIdRef
   const votingTriggeredForTrackRef = useRef<string>("")
   const isTransitioningRef = useRef(false)
 
