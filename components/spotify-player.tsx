@@ -27,6 +27,45 @@ interface SpotifyPlayer {
   addListener: (event: string, callback: (data: any) => void) => void
 }
 
+const SDK_SRC = "https://sdk.scdn.co/spotify-player.js"
+
+function loadSpotifySDK(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.Spotify) {
+      resolve()
+      return
+    }
+
+    const timeout = setTimeout(() => reject(new Error("SDK load timeout")), 10000)
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+      clearTimeout(timeout)
+      resolve()
+    }
+
+    const existing = document.querySelector(`script[src="${SDK_SRC}"]`)
+    if (!existing) {
+      const script = document.createElement("script")
+      script.src = SDK_SRC
+      script.async = true
+      script.onerror = () => {
+        clearTimeout(timeout)
+        reject(new Error("Failed to load Spotify SDK"))
+      }
+      document.body.appendChild(script)
+    }
+
+    // Fallback poll in case the callback already fired
+    const poll = setInterval(() => {
+      if (window.Spotify) {
+        clearTimeout(timeout)
+        clearInterval(poll)
+        resolve()
+      }
+    }, 100)
+  })
+}
+
 interface SpotifyPlayerProps {
   track: Track
   nextTrack?: Track | null
@@ -186,24 +225,7 @@ export function SpotifyPlayer({ track, nextTrack, onProgress, onTrackEnd }: Spot
 
         accessTokenRef.current = sessionData.accessToken
 
-        if (!window.Spotify) {
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("SDK timeout")), 5000)
-
-            window.onSpotifyWebPlaybackSDKReady = () => {
-              clearTimeout(timeout)
-              resolve()
-            }
-
-            const poll = setInterval(() => {
-              if (window.Spotify) {
-                clearTimeout(timeout)
-                clearInterval(poll)
-                resolve()
-              }
-            }, 50)
-          })
-        }
+        await loadSpotifySDK()
 
         spotifyPlayer = new window.Spotify.Player({
           name: "DJ Interface Web Player",
